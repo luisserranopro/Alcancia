@@ -1,0 +1,17 @@
+{
+ "name": "Alcancía",
+ "short_name": "Alcancía",
+ "start_url": "./",
+ "display": "standalone",
+ "lang": "es",
+ "background_color": "#f7f4f0",
+ "theme_color": "#a8432a",
+ "icons": [
+  {
+   "src": "icono.svg",
+   "sizes": "any",
+   "type": "image/svg+xml",
+   "purpose": "any"
+  }
+ ]
+}
