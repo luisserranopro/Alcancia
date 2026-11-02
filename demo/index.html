@@ -198,6 +198,16 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .boton-enlace { display: inline-flex; align-items: center; text-decoration: none; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; color: var(--primario); font-size: .9rem; white-space: nowrap; }
 @media (max-width: 560px) { .demo-acciones .boton-enlace { display: none; } }
 .acceso .opciones-demo { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+
+/* llave de recuperación */
+button.enlace { background: none; border: 0; padding: 0; min-height: 0; color: var(--primario); text-decoration: underline; cursor: pointer; font: inherit; text-align: left; }
+.llave-codigo { font-size: clamp(1.05rem, 4.2vw, 1.5rem); letter-spacing: .06em; text-align: center; padding: 14px 10px; border: 2px dashed var(--acento); border-radius: 10px; background: var(--superficie-2); word-break: break-all; user-select: all; }
+#imprimir .hoja-llave { max-width: 160mm; margin: 0 auto; font-size: 11pt; }
+#imprimir .hoja-llave h1 { font-size: 20pt; margin-bottom: 2mm; }
+#imprimir .hoja-llave .ent { font-size: 13pt; margin-bottom: 8mm; }
+#imprimir .hoja-llave .codigo { font: 700 20pt ui-monospace, Consolas, monospace; letter-spacing: .08em; border: 2px dashed #000; padding: 8mm 4mm; text-align: center; margin: 6mm 0; }
+#imprimir .hoja-llave li { margin-bottom: 2mm; }
+#imprimir .hoja-llave .firma { margin-top: 14mm; }
 </style>
 </head>
 <body>
@@ -215,7 +225,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.2.0', formato: 'asocia-v1', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.3.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -239,9 +249,10 @@ A.aCentimos = function (texto) {
   if (!/^-?\d+(\.\d{1,2})?$/.test(t)) return NaN;
   return Math.round(parseFloat(t) * 100);
 };
+var FORMATO_EUROS = (typeof Intl !== 'undefined') ? new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true }) : null;
 A.euros = function (cent) {
   var n = (cent || 0) / 100;
-  return n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  return (FORMATO_EUROS ? FORMATO_EUROS.format(n) : n.toFixed(2).replace('.', ',')) + ' €';
 };
 A.decimalPunto = function (cent) {
   var s = String(Math.abs(cent));
@@ -297,14 +308,17 @@ A.debounce = function (fn, ms) {
   return function () { var a = arguments, self = this; clearTimeout(t); t = setTimeout(function () { fn.apply(self, a); }, ms); };
 };
 
+/* Ordena calculando cada clave una sola vez (con miles de elementos, la clave puede ser costosa) */
+var COLADOR = (typeof Intl !== 'undefined' && Intl.Collator) ? new Intl.Collator('es', { numeric: true }) : null;
+A.comparaTexto = function (a, b) { return COLADOR ? COLADOR.compare(a, b) : String(a).localeCompare(String(b), 'es', { numeric: true }); };
 A.ordenarPor = function (lista, clave, desc) {
   var f = typeof clave === 'function' ? clave : function (x) { return x[clave]; };
-  return lista.slice().sort(function (a, b) {
-    var va = f(a), vb = f(b);
-    if (va == null) va = ''; if (vb == null) vb = '';
-    var r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'es', { numeric: true });
+  return lista.map(function (x, i) { var v = f(x); return { x: x, v: v == null ? '' : v, i: i }; }).sort(function (a, b) {
+    var va = a.v, vb = b.v;
+    var r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : A.comparaTexto(String(va), String(vb));
+    if (!r) r = a.i - b.i;                       // orden estable
     return desc ? -r : r;
-  });
+  }).map(function (o) { return o.x; });
 };
 
 A.descargar = function (nombre, contenido, tipo) {
@@ -408,11 +422,18 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 })(A);
 
-/* Alcancía · cifrado de los datos con la contraseña de la entidad (WebCrypto: PBKDF2 + AES-GCM) */
+/* Alcancía · cifrado de los datos (WebCrypto: PBKDF2 + AES-GCM)
+   Formato alcancia-v2: los datos se cifran con una clave de datos aleatoria; esa clave se guarda «envuelta»
+   (cifrada) dos veces, con la contraseña y con la llave de recuperación. Cualquiera de las dos abre los datos,
+   y cambiar una no obliga a volver a cifrar todo. El formato antiguo (asocia-v1) se sigue abriendo. */
 'use strict';
 (function (A) {
   var C = function () { return (globalThis.crypto || window.crypto); };
-  A.KDF_ITER = 600000;
+  A.KDF_ITER = 600000;          // contraseña: elegida por personas, necesita derivación lenta
+  A.KDF_ITER_LLAVE = 210000;    // llave: 125 bits aleatorios, basta con menos
+  A.FORMATO = 'alcancia-v2';
+  A.FORMATO_V1 = 'asocia-v1';
+  var ALFABETO = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // base32 de Crockford: sin I, L, O ni U para no confundir
 
   function b64(buf) {
     var bin = '', bytes = new Uint8Array(buf);
@@ -426,34 +447,103 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
   A.b64 = b64; A.deB64 = deB64;
 
-  A.derivarClave = async function (password, salt, iter) {
-    var base = await C().subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+  A.derivarClave = async function (secreto, salt, iter) {
+    var base = await C().subtle.importKey('raw', new TextEncoder().encode(secreto), 'PBKDF2', false, ['deriveKey']);
     return C().subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter || A.KDF_ITER, hash: 'SHA-256' },
       base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   };
+  A.nuevaSal = function () { return C().getRandomValues(new Uint8Array(16)); };
 
-  /* Devuelve el «sobre» cifrado que se guarda en disco o en el navegador */
+  /* ---------- clave de datos y ranuras ---------- */
+  A.nuevaClaveDatos = async function () {
+    var raw = C().getRandomValues(new Uint8Array(32));
+    return { raw: raw, clave: await importar(raw) };
+  };
+  function importar(raw) { return C().subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']); }
+
+  /* Envuelve (cifra) la clave de datos con un secreto: contraseña o llave */
+  A.envolver = async function (raw, secreto, iter) {
+    var salt = A.nuevaSal(), it = iter || A.KDF_ITER;
+    var kek = await A.derivarClave(secreto, salt, it);
+    var iv = C().getRandomValues(new Uint8Array(12));
+    var ct = await C().subtle.encrypt({ name: 'AES-GCM', iv: iv }, kek, raw);
+    return { kdf: { alg: 'PBKDF2-SHA256', iter: it, salt: b64(salt) }, iv: b64(iv), clave: b64(ct) };
+  };
+  A.desenvolver = async function (ranura, secreto) {
+    var kek = await A.derivarClave(secreto, deB64(ranura.kdf.salt), ranura.kdf.iter);
+    var raw = new Uint8Array(await C().subtle.decrypt({ name: 'AES-GCM', iv: deB64(ranura.iv) }, kek, deB64(ranura.clave)));
+    return { raw: raw, clave: await importar(raw) };
+  };
+
+  /* ---------- llave de recuperación: 25 caracteres en 5 grupos ---------- */
+  A.nuevaLlave = function () {
+    var r = C().getRandomValues(new Uint8Array(25)), s = '';
+    for (var i = 0; i < 25; i++) s += ALFABETO[r[i] & 31];   // 256 es múltiplo de 32: reparto uniforme
+    return A.formatoLlave(s);
+  };
+  A.normalizaLlave = function (texto) {
+    var s = String(texto || '').toUpperCase().replace(/[^0-9A-Z]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1').replace(/U/g, 'V');
+    if (s.length !== 25) return null;
+    for (var i = 0; i < s.length; i++) if (ALFABETO.indexOf(s[i]) < 0) return null;
+    return s;
+  };
+  A.formatoLlave = function (texto) { var s = A.normalizaLlave(texto) || ''; return s.match(/.{1,5}/g).join('-'); };
+
+  /* ---------- compresión (si el navegador la ofrece): copias más pequeñas y guardado más rápido ---------- */
+  async function transformar(bytes, Clase) {
+    var flujo = new Blob([bytes]).stream().pipeThrough(new Clase('gzip'));
+    return new Uint8Array(await new Response(flujo).arrayBuffer());
+  }
+  var hayCompresion = function () { return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function' && typeof Blob === 'function' && typeof Response === 'function'; };
+
+  /* ---------- sobre ---------- */
+  /* Devuelve el «sobre» cifrado que se guarda en el navegador, en el fichero o en las copias */
+  A.cifrarSobre = async function (clave, ranuras, objeto) {
+    var bytes = new TextEncoder().encode(JSON.stringify(objeto)), compresion = '';
+    if (hayCompresion()) { bytes = await transformar(bytes, CompressionStream); compresion = 'gzip'; }
+    var iv = C().getRandomValues(new Uint8Array(12));
+    var ct = await C().subtle.encrypt({ name: 'AES-GCM', iv: iv }, clave, bytes);
+    var c = { alg: 'AES-256-GCM', iv: b64(iv), datos: b64(ct) }; if (compresion) c.compresion = compresion;
+    return { formato: A.FORMATO, app: A.APP.nombre, ranuras: ranuras, cifrado: c, guardado: new Date().toISOString() };
+  };
+
+  /* Formato antiguo (v1): se mantiene para las pruebas y para abrir copias anteriores */
   A.cifrar = async function (clave, salt, objeto) {
     var iv = C().getRandomValues(new Uint8Array(12));
-    var datos = new TextEncoder().encode(JSON.stringify(objeto));
-    var ct = await C().subtle.encrypt({ name: 'AES-GCM', iv: iv }, clave, datos);
-    return { formato: A.APP.formato, app: A.APP.nombre, kdf: { alg: 'PBKDF2-SHA256', iter: A.KDF_ITER, salt: b64(salt) },
+    var ct = await C().subtle.encrypt({ name: 'AES-GCM', iv: iv }, clave, new TextEncoder().encode(JSON.stringify(objeto)));
+    return { formato: A.FORMATO_V1, app: A.APP.nombre, kdf: { alg: 'PBKDF2-SHA256', iter: A.KDF_ITER, salt: b64(salt) },
              cifrado: { alg: 'AES-256-GCM', iv: b64(iv), datos: b64(ct) }, guardado: new Date().toISOString() };
   };
 
-  A.descifrar = async function (sobre, password, claveYaDerivada) {
-    if (!sobre || sobre.formato !== A.APP.formato) throw new Error('El fichero no es una copia de ' + A.APP.nombre + '.');
-    var salt = deB64(sobre.kdf.salt);
-    var clave = claveYaDerivada || await A.derivarClave(password, salt, sobre.kdf.iter);
-    try {
-      var claro = await C().subtle.decrypt({ name: 'AES-GCM', iv: deB64(sobre.cifrado.iv) }, clave, deB64(sobre.cifrado.datos));
-      return { datos: JSON.parse(new TextDecoder().decode(claro)), clave: clave, salt: salt };
-    } catch (e) {
-      throw new Error('Contraseña incorrecta o fichero dañado.');
+  /* Abre un sobre con la contraseña o con la llave de recuperación.
+     Devuelve { datos, raw, clave, ranuras, via: 'contrasena' | 'recuperacion' | 'v1' } */
+  A.descifrar = async function (sobre, secreto) {
+    if (!sobre || (sobre.formato !== A.FORMATO && sobre.formato !== A.FORMATO_V1)) throw new Error('El fichero no es una copia de ' + A.APP.nombre + '.');
+    var MAL = 'Contraseña o llave de recuperación incorrecta, o fichero dañado.';
+    if (sobre.formato === A.FORMATO_V1) {
+      var clave1 = await A.derivarClave(secreto, deB64(sobre.kdf.salt), sobre.kdf.iter), claro1;
+      try { claro1 = await C().subtle.decrypt({ name: 'AES-GCM', iv: deB64(sobre.cifrado.iv) }, clave1, deB64(sobre.cifrado.datos)); }
+      catch (e) { throw new Error(MAL); }
+      // se pasa al formato nuevo: clave de datos nueva envuelta con la misma contraseña
+      var nueva = await A.nuevaClaveDatos();
+      return { datos: JSON.parse(new TextDecoder().decode(claro1)), raw: nueva.raw, clave: nueva.clave,
+               ranuras: { contrasena: await A.envolver(nueva.raw, secreto) }, via: 'v1' };
     }
+    var r = sobre.ranuras || {}, k = null, via = '';
+    try { k = await A.desenvolver(r.contrasena, secreto); via = 'contrasena'; } catch (e) { /* probamos con la llave */ }
+    var llave = A.normalizaLlave(secreto);
+    if (!k && r.recuperacion && llave) { try { k = await A.desenvolver(r.recuperacion, llave); via = 'recuperacion'; } catch (e) { /* nada */ } }
+    if (!k) throw new Error(MAL);
+    var bytes;
+    try {
+      bytes = new Uint8Array(await C().subtle.decrypt({ name: 'AES-GCM', iv: deB64(sobre.cifrado.iv) }, k.clave, deB64(sobre.cifrado.datos)));
+      if (sobre.cifrado.compresion === 'gzip') {
+        if (!hayCompresion()) throw new Error('Este navegador no puede abrir copias comprimidas. Actualízalo o usa Chrome o Edge.');
+        bytes = await transformar(bytes, DecompressionStream);
+      }
+    } catch (e) { throw new Error(/navegador/.test(e.message) ? e.message : 'El fichero está dañado.'); }
+    return { datos: JSON.parse(new TextDecoder().decode(bytes)), raw: k.raw, clave: k.clave, ranuras: r, via: via };
   };
-
-  A.nuevaSal = function () { return C().getRandomValues(new Uint8Array(16)); };
 
   A.fuerzaPassword = function (p) {
     p = String(p || '');
@@ -503,33 +593,39 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   A.haySobreLocal = async function () { try { return !!(await A.idbGet('sobre')); } catch (e) { return false; } };
 
+  /* Estado de las claves en memoria: clave de datos (A.S.clave), su copia en bruto para envolverla y las ranuras */
+  function usarClaves(r) { A.S.clave = r.clave; A.S.raw = r.raw; A.S.ranuras = r.ranuras; A.S.salt = null; }
+
   A.crearEntidad = async function (entidad, password) {
-    A.S.salt = A.nuevaSal();
-    A.S.clave = await A.derivarClave(password, A.S.salt);
+    var k = await A.nuevaClaveDatos();
+    usarClaves({ clave: k.clave, raw: k.raw, ranuras: { contrasena: await A.envolver(k.raw, password) } });
     A.S.db = A.nuevaBD(entidad);
     A.log(A.S.db, 'Creación de la entidad');
     await A.guardarAhora();
   };
 
-  A.abrirLocal = async function (password) {
-    var sobre = await A.idbGet('sobre');
-    var r = await A.descifrar(sobre, password);
-    A.S.db = A.migrar(r.datos); A.S.clave = r.clave; A.S.salt = r.salt;
+  /* Abre con la contraseña o la llave. Devuelve 'contrasena', 'recuperacion' o 'v1' (copia antigua, ya convertida) */
+  async function abrir(sobre, secreto) {
+    var r = await A.descifrar(sobre, secreto);
+    A.S.db = A.migrar(r.datos); usarClaves(r);
+    return r.via;
+  }
+  A.abrirLocal = async function (secreto) {
+    var via = await abrir(await A.idbGet('sobre'), secreto);
     A.S.handle = (await A.idbGet('fichero')) || null;
     A.S.estadoFichero = A.S.handle ? 'pendiente-permiso' : 'ninguno';
-    return A.S.db;
+    if (via === 'v1') await A.guardarAhora();
+    return via;
   };
-
-  A.abrirDesdeTexto = async function (texto, password) {
+  A.abrirDesdeTexto = async function (texto, secreto) {
     var sobre;
     try { sobre = JSON.parse(texto); } catch (e) { throw new Error('El fichero no es una copia válida.'); }
-    var r = await A.descifrar(sobre, password);
-    A.S.db = A.migrar(r.datos); A.S.clave = r.clave; A.S.salt = r.salt;
+    var via = await abrir(sobre, secreto);
     await A.guardarAhora();
-    return A.S.db;
+    return via;
   };
 
-  A.sobreActual = async function () { return A.cifrar(A.S.clave, A.S.salt, A.S.db); };
+  A.sobreActual = async function () { return A.cifrarSobre(A.S.clave, A.S.ranuras, A.S.db); };
 
   A.guardarAhora = async function () {
     if (!A.S.db || !A.S.clave) return;
@@ -576,15 +672,30 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 
   A.cambiarPassword = async function (actual, nueva) {
-    var sobre = await A.idbGet('sobre');
-    await A.descifrar(sobre, actual); // comprueba la actual
-    A.S.salt = A.nuevaSal();
-    A.S.clave = await A.derivarClave(nueva, A.S.salt);
-    A.log(A.S.db, 'Cambio de contraseña');
+    try { await A.desenvolver(A.S.ranuras.contrasena, actual); } catch (e) { throw new Error('La contraseña actual no es correcta.'); }
+    await A.ponerPassword(nueva, 'Cambio de contraseña');
+  };
+  /* Pone una contraseña nueva sin pedir la anterior (después de entrar con la llave de recuperación) */
+  A.ponerPassword = async function (nueva, motivo) {
+    A.S.ranuras = Object.assign({}, A.S.ranuras, { contrasena: await A.envolver(A.S.raw, nueva) });
+    A.log(A.S.db, motivo || 'Nueva contraseña');
     await A.guardarAhora();
   };
 
-  A.bloquear = function () { A.S.db = null; A.S.clave = null; A.S.salt = null; };
+  /* Llave de recuperación: crea una nueva (la anterior deja de servir para los datos actuales) */
+  A.crearLlave = async function () {
+    var llave = A.nuevaLlave();
+    var ranura = await A.envolver(A.S.raw, A.normalizaLlave(llave), A.KDF_ITER_LLAVE);
+    ranura.creada = new Date().toISOString();
+    var habia = !!(A.S.ranuras && A.S.ranuras.recuperacion);
+    A.S.ranuras = Object.assign({}, A.S.ranuras, { recuperacion: ranura });
+    A.log(A.S.db, habia ? 'Nueva llave de recuperación (la anterior deja de servir)' : 'Creada la llave de recuperación');
+    await A.guardarAhora();
+    return llave;
+  };
+  A.llaveCreada = function () { return A.S.ranuras && A.S.ranuras.recuperacion ? A.S.ranuras.recuperacion.creada || '' : null; };
+
+  A.bloquear = function () { A.S.db = null; A.S.clave = null; A.S.raw = null; A.S.ranuras = null; A.S.salt = null; };
 
   A.borrarTodo = async function () {
     await A.idbDel('sobre'); await A.idbDel('fichero');
@@ -840,12 +951,36 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       condicion: 'activo', historialCondicion: [] };
   };
 
+  /* Índices para entidades grandes: buscar por id o agrupar por miembro sin recorrer listas enteras.
+     Se reconstruye si cambia alguna lista y caduca al terminar la tarea en curso, así nunca queda desfasado. */
+  var IDX = null;
+  A.indice = function (db) {
+    var t = db.tarjetas || [];
+    if (IDX && IDX.db === db && IDX.m === db.miembros && IDX.c === db.cargos && IDX.t === t &&
+        IDX.nm === db.miembros.length && IDX.nc === db.cargos.length && IDX.nt === t.length) return IDX;
+    var ix = { db: db, m: db.miembros, c: db.cargos, t: t, nm: db.miembros.length, nc: db.cargos.length, nt: t.length,
+      miembro: new Map(), porNumero: new Map(), cargo: new Map(), cargosDe: new Map(), tarjeta: new Map(), tarjetasDe: new Map() };
+    db.miembros.forEach(function (m) {
+      ix.miembro.set(m.id, m);
+      if (m.numero) { var k = String(m.numero); (ix.porNumero.get(k) || ix.porNumero.set(k, []).get(k)).push(m); }
+    });
+    db.cargos.forEach(function (c) { ix.cargo.set(c.id, c); (ix.cargosDe.get(c.miembroId) || ix.cargosDe.set(c.miembroId, []).get(c.miembroId)).push(c); });
+    t.forEach(function (x) { ix.tarjeta.set(x.id, x); (ix.tarjetasDe.get(x.miembroId) || ix.tarjetasDe.set(x.miembroId, []).get(x.miembroId)).push(x); });
+    IDX = ix;
+    if (typeof setTimeout === 'function') setTimeout(function () { if (IDX === ix) IDX = null; }, 0);
+    return ix;
+  };
+  A.cargoPorId = function (db, id) { return A.indice(db).cargo.get(id); };
+  A.tarjetaPorId = function (db, id) { return A.indice(db).tarjeta.get(id); };
+  A.cargosDe = function (db, miembroId) { return (A.indice(db).cargosDe.get(miembroId) || []).slice(); };
+  A.tarjetasDe = function (db, miembroId) { return (A.indice(db).tarjetasDe.get(miembroId) || []).slice(); };
+
   /* Comprueba un miembro y devuelve errores (impiden guardar) y avisos (se pueden ignorar) */
   A.revisaMiembro = function (db, m) {
     var errores = [], avisos = [];
     if (!String(m.nombre || '').trim()) errores.push('El nombre es obligatorio.');
     if (!m.fechaAlta) errores.push('La fecha de alta es obligatoria.');
-    if (m.numero && db.miembros.some(function (o) { return o.id !== m.id && String(o.numero) === String(m.numero); })) errores.push('Ya existe otro miembro con ese número.');
+    if (m.numero && (A.indice(db).porNumero.get(String(m.numero)) || []).some(function (o) { return o.id !== m.id && String(o.numero) === String(m.numero); })) errores.push('Ya existe otro miembro con ese número.');
     if (m.documento && !A.validaDNI(m.documento)) avisos.push('El DNI/NIE no parece correcto.');
     if (m.email && !A.validaEmail(m.email)) avisos.push('El email no parece correcto.');
     var edad = A.edad(m.fechaNacimiento);
@@ -914,9 +1049,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var tipo = db.tiposCuota.find(function (t) { return t.id === tipoCuotaId; });
     if (!tipo) throw new Error('Elige un tipo de cuota.');
     if (!String(periodo || '').trim()) throw new Error('Indica el periodo.');
-    var creados = 0, omitidos = 0;
+    var creados = 0, omitidos = 0, ya = new Set();
+    db.cargos.forEach(function (c) { if (c.tipoCuotaId === tipoCuotaId && c.periodo === periodo && c.estado !== 'anulado') ya.add(c.miembroId); });
     db.miembros.filter(function (m) { return m.estado === 'alta' && m.tipoCuotaId === tipoCuotaId; }).forEach(function (m) {
-      var existe = db.cargos.some(function (c) { return c.miembroId === m.id && c.tipoCuotaId === tipoCuotaId && c.periodo === periodo && c.estado !== 'anulado'; });
+      var existe = ya.has(m.id);
       if (existe) { omitidos++; return; }
       db.cargos.push({ id: A.uid('c'), miembroId: m.id, tipoCuotaId: tipoCuotaId, periodo: periodo,
         concepto: concepto || (tipo.nombre + ' ' + periodo), importeCent: tipo.importeCent, estado: 'pendiente',
@@ -927,24 +1063,24 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return { creados: creados, omitidos: omitidos };
   };
 
-  A.miembroPorId = function (db, id) { return db.miembros.find(function (m) { return m.id === id; }); };
+  A.miembroPorId = function (db, id) { return A.indice(db).miembro.get(id); };
 
   A.marcarPagado = function (db, cargoId, forma, fecha) {
-    var c = db.cargos.find(function (x) { return x.id === cargoId; });
+    var c = A.cargoPorId(db, cargoId);
     if (!c) return;
     c.estado = 'pagado'; c.formaPago = forma || c.formaPago; c.fechaPago = fecha || A.hoyISO();
     A.log(db, 'Cobrado cargo ' + c.concepto);
   };
   A.anularCargo = function (db, cargoId) {
-    var c = db.cargos.find(function (x) { return x.id === cargoId; });
+    var c = A.cargoPorId(db, cargoId);
     if (c && c.estado !== 'pagado') { c.estado = 'anulado'; A.log(db, 'Anulado cargo ' + c.concepto); }
   };
   A.registrarDevolucion = function (db, cargoId) {
-    var c = db.cargos.find(function (x) { return x.id === cargoId; });
+    var c = A.cargoPorId(db, cargoId);
     if (c) { c.estado = 'devuelto'; c.fechaPago = ''; A.log(db, 'Devolución de ' + c.concepto); }
   };
   A.reabrirCargo = function (db, cargoId) {
-    var c = db.cargos.find(function (x) { return x.id === cargoId; });
+    var c = A.cargoPorId(db, cargoId);
     if (c) { c.estado = 'pendiente'; c.fechaPago = ''; c.remesaId = ''; }
   };
 
@@ -959,7 +1095,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   A.adeudosDe = function (db, cargoIds) {
     return cargoIds.map(function (id) {
-      var c = db.cargos.find(function (x) { return x.id === id; });
+      var c = A.cargoPorId(db, id);
       var m = A.miembroPorId(db, c.miembroId);
       return { id: c.id.replace(/^c/, 'C'), cargoId: c.id, nombre: (m.titular || A.nombreCompleto(m)), iban: m.iban, mandato: m.mandato,
         fechaMandato: m.fechaMandato, importeCent: c.importeCent, concepto: c.concepto + ' - ' + A.vocab(db).Miembro + ' ' + m.numero };
@@ -974,7 +1110,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       cargoIds: cargoIds.slice(), estado: 'generada' };
     db.remesas.unshift(remesa);
     cargoIds.forEach(function (id) {
-      var c = db.cargos.find(function (x) { return x.id === id; });
+      var c = A.cargoPorId(db, id);
       c.estado = 'remesado'; c.remesaId = remesa.id; c.formaPago = 'domiciliacion';
     });
     A.log(db, 'Remesa ' + res.msgId + ' con ' + res.n + ' adeudos por ' + A.euros(res.total));
@@ -986,7 +1122,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (!r) return;
     r.estado = 'cobrada';
     r.cargoIds.forEach(function (id) {
-      var c = db.cargos.find(function (x) { return x.id === id; });
+      var c = A.cargoPorId(db, id);
       if (c && c.estado === 'remesado') { c.estado = 'pagado'; c.fechaPago = r.fechaCobro; }
     });
     A.log(db, 'Remesa ' + r.msgId + ' marcada como cobrada');
@@ -1199,14 +1335,14 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.tarjetasDeSalida = function (db, salidaId) { return db.tarjetas.filter(function (t) { return t.salidaId === salidaId; }); };
 
   A.tarjetaVigente = function (db, salidaId, miembroId) {
-    return db.tarjetas.find(function (t) { return t.salidaId === salidaId && t.miembroId === miembroId && t.estado !== 'anulada'; });
+    return (A.indice(db).tarjetasDe.get(miembroId) || []).find(function (t) { return t.salidaId === salidaId && t.estado !== 'anulada'; });
   };
 
   /* Avisos que no impiden emitir (los decide la junta): cuotas pendientes, plazas, solo activos, baja */
   A.avisosEmision = function (db, salidaId, miembroId, tipoId) {
     var s = A.salidaPorId(db, salidaId), t = s && s.tipos.find(function (x) { return x.id === tipoId; }), m = A.miembroPorId(db, miembroId), av = [];
     if (!s || !t || !m) return av;
-    var deuda = db.cargos.filter(function (c) { return c.miembroId === miembroId && (c.estado === 'pendiente' || c.estado === 'devuelto'); });
+    var deuda = (A.indice(db).cargosDe.get(miembroId) || []).filter(function (c) { return c.estado === 'pendiente' || c.estado === 'devuelto'; });
     if (deuda.length) av.push('Tiene ' + deuda.length + (deuda.length === 1 ? ' cuota pendiente' : ' cuotas pendientes') + ' (' + A.euros(deuda.reduce(function (a, c) { return a + c.importeCent; }, 0)) + ').');
     if (t.plazas) {
       var usadas = db.tarjetas.filter(function (x) { return x.tipoId === tipoId && x.estado !== 'anulada'; }).length;
@@ -1242,7 +1378,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return tj;
   };
 
-  function tarjeta(db, id) { var t = db.tarjetas.find(function (x) { return x.id === id; }); if (!t) throw new Error('Tarjeta no encontrada.'); return t; }
+  function tarjeta(db, id) { var t = A.tarjetaPorId(db, id); if (!t) throw new Error('Tarjeta no encontrada.'); return t; }
 
   A.pagarTarjeta = function (db, id, forma, fecha) {
     var t = tarjeta(db, id);
@@ -1285,7 +1421,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   /* Historial de tarjetas de un hermano en todas las salidas, de la más reciente a la más antigua */
   A.historialTarjetas = function (db, miembroId) {
-    return db.tarjetas.filter(function (t) { return t.miembroId === miembroId; }).map(function (t) {
+    return A.tarjetasDe(db, miembroId).map(function (t) {
       var s = A.salidaPorId(db, t.salidaId) || {};
       return { id: t.id, salida: s.nombre || '—', fecha: s.fecha || '', tipo: t.tipoNombre, numero: t.numero, puesto: t.puesto, importeCent: t.importeCent,
         estado: A.ESTADOS_TARJETA[t.estado], estadoClave: t.estado, fechaPago: t.fechaPago };
@@ -1381,7 +1517,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var fondo = document.createElement('div'); fondo.className = 'fondo-modal';
       var id = A.uid('t');
       fondo.innerHTML = '<div class="modal' + (op.ancho ? ' ancho' : '') + '" role="dialog" aria-modal="true" aria-labelledby="' + id + '">' +
-        '<header><h2 id="' + id + '">' + A.esc(op.titulo) + '</h2><button class="mini" data-cerrar aria-label="Cerrar">' + A.icono('x') + '</button></header>' +
+        '<header><h2 id="' + id + '">' + A.esc(op.titulo) + '</h2>' + (op.obligatorio ? '' : '<button class="mini" data-cerrar aria-label="Cerrar">' + A.icono('x') + '</button>') + '</header>' +
         '<div class="cuerpo">' + (op.html || '') + '</div><footer><div class="izq"></div></footer></div>';
       var pie = A.$('footer', fondo), izq = A.$('.izq', fondo);
       (op.botones || [{ texto: 'Aceptar', valor: true, clase: 'principal' }]).forEach(function (b) {
@@ -1394,7 +1530,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       });
       function cerrar(v) { fondo.remove(); document.removeEventListener('keydown', tecla); if (previo && previo.focus) previo.focus(); resolver(v); }
       function tecla(e) {
-        if (e.key === 'Escape') cerrar(undefined);
+        if (e.key === 'Escape' && !op.obligatorio) cerrar(undefined);
         if (e.key === 'Tab') { // trampa de foco
           var f = A.$$('button, [href], input, select, textarea', fondo).filter(function (x) { return !x.disabled && x.offsetParent !== null; });
           if (!f.length) return;
@@ -1402,7 +1538,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
           else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
         }
       }
-      A.$('[data-cerrar]', fondo).addEventListener('click', function () { cerrar(undefined); });
+      if (!op.obligatorio) A.$('[data-cerrar]', fondo).addEventListener('click', function () { cerrar(undefined); });
       document.addEventListener('keydown', tecla);
       document.body.appendChild(fondo);
       if (op.alAbrir) op.alAbrir(fondo);
@@ -1495,10 +1631,11 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       A.campo('nif', 'NIF de la entidad', '', { ayuda: 'Opcional ahora; necesario para las remesas.' }) +
       A.campo('p1', 'Contraseña', '', { tipo: 'password', requerido: true, ayuda: 'Mínimo 10 caracteres, con mayúsculas, minúsculas y números.', attrs: ' autocomplete="new-password"' }) +
       A.campo('p2', 'Repite la contraseña', '', { tipo: 'password', requerido: true, attrs: ' autocomplete="new-password"' }) +
-      A.campo('entiendo', 'Entiendo que si olvido la contraseña nadie podrá recuperar los datos.', false, { tipo: 'checkbox' }) +
+      A.campo('entiendo', 'Entiendo que si olvido la contraseña solo podré recuperar los datos con la llave de recuperación que se crea a continuación.', false, { tipo: 'checkbox' }) +
       '<button class="principal" type="submit">Crear</button></form></section>' +
       '<section class="tarjeta"><h2>Abrir una copia</h2><p>¿Ya usáis ' + A.APP.nombre + ' en otro ordenador o es un traspaso de junta? Abre el fichero <span class="mono">' + A.APP.extension + '</span>.</p>' +
       '<form id="f-abrir" novalidate>' + A.campo('fichero', 'Fichero de copia', '', { tipo: 'file', attrs: ' accept=".alcancia,.asociapp,.asocia,application/json"' }) +
+        '<p class="gris" style="font-size:.9rem">Si nadie recuerda la contraseña, escribe la llave de recuperación en su lugar.</p>' +
       A.campo('p', 'Contraseña', '', { tipo: 'password', attrs: ' autocomplete="current-password"' }) +
       '<button type="submit">Abrir copia</button></form></section>' +
       '<section class="tarjeta"><h2>Probar sin compromiso</h2><p>Abre una entidad de ejemplo con datos inventados para ver cómo funciona. Puedes borrarla después desde «Datos y copias».</p>' +
@@ -1518,6 +1655,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var b = A.$('button[type=submit]', e.target); b.disabled = true; b.textContent = 'Creando…';
       await A.crearEntidad({ nombre: f.nombre, perfil: f.perfil, nif: A.limpiaDoc(f.nif) }, f.p1);
       A.S.db.sepa.identificador = f.nif ? A.identificadorAcreedor(f.nif) : '';
+      await A.mostrarLlave(await A.crearLlave(), true);
       A.guardar();
       location.hash = '#/configuracion';
       A.pintar();
@@ -1529,7 +1667,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var input = A.$('input[type=file]', e.target), p = A.$('input[name=p]', e.target).value;
       if (!input.files[0]) return A.toast('Elige el fichero de copia.', 'mal');
       try {
-        await A.abrirDesdeTexto(await input.files[0].text(), p);
+        var via = await A.abrirDesdeTexto(await input.files[0].text(), p);
+        if (via === 'recuperacion') await A.pedirNuevaPassword();
         location.hash = '#/panel'; A.pintar(); A.toast('Copia abierta correctamente.');
       } catch (err) { A.toast(err.message, 'mal'); }
     });
@@ -1548,6 +1687,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     raiz.innerHTML = marco('<section class="tarjeta estrecha"><h2>' + A.icono('candado', 22) + ' Introduce la contraseña</h2>' +
       '<form id="f-desb" novalidate>' + A.campo('p', 'Contraseña de la entidad', '', { tipo: 'password', attrs: ' autocomplete="current-password"' }) +
       '<button class="principal" type="submit">Entrar</button></form>' +
+      '<p style="margin-top:12px"><button type="button" class="enlace" id="b-olvido">¿Habéis olvidado la contraseña? Usad la llave de recuperación</button></p>' +
+      '<form id="f-llave" class="oculto" novalidate><p class="gris">Escribe la llave de recuperación impresa (25 letras y números, con o sin guiones). Después elegirás una contraseña nueva.</p>' +
+      A.campo('llave', 'Llave de recuperación', '', { attrs: ' autocomplete="off" autocapitalize="characters" spellcheck="false" class="mono"', ph: 'XXXXX-XXXXX-XXXXX-XXXXX-XXXXX' }) +
+      '<button class="principal" type="submit">Abrir con la llave</button></form>' +
       '<hr style="border:0;border-top:1px solid var(--borde);margin:18px 0"><p class="gris">¿Otra entidad u otro ordenador?</p>' +
       '<button id="b-otra" type="button">Abrir otra copia o empezar de nuevo</button></section>');
     A.$('#f-desb').addEventListener('submit', async function (e) {
@@ -1560,10 +1703,70 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         A.pintar();
       } catch (err) { b.disabled = false; b.textContent = 'Entrar'; A.toast(err.message, 'mal'); }
     });
+    A.$('#b-olvido').addEventListener('click', function () { A.$('#f-llave').classList.toggle('oculto'); var i = A.$('#f-llave input'); if (i) i.focus(); });
+    A.$('#f-llave').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var v = A.$('input[name=llave]', e.target).value;
+      if (!A.normalizaLlave(v)) return A.toast('La llave tiene 25 letras y números. Revísala.', 'mal');
+      var b = A.$('button[type=submit]', e.target); b.disabled = true; b.textContent = 'Comprobando…';
+      try {
+        var via = await A.abrirLocal(v);
+        if (via !== 'recuperacion') throw new Error('Eso no es la llave de recuperación.');
+        await A.pedirNuevaPassword();
+        A.S.ultimaActividad = Date.now();
+        location.hash = '#/panel'; A.pintar();
+      } catch (err) { A.bloquear(); b.disabled = false; b.textContent = 'Abrir con la llave'; A.toast(err.message, 'mal'); }
+    });
     A.$('#b-otra').addEventListener('click', async function () {
       var ok = await A.confirmar('Empezar de nuevo', 'Para abrir otra entidad hay que borrar los datos guardados en este navegador. Hazlo solo si tienes una copia o si no los necesitas.', 'Borrar y continuar', true);
       if (ok) { await A.borrarTodo(); A.pintar(); }
     });
+  };
+
+  /* ---------- llave de recuperación ---------- */
+  function hojaLlave(llave) {
+    var e = A.S.db.entidad;
+    return '<div class="hoja-llave">' + (e.nif ? '<p class="ent">NIF ' + A.esc(e.nif) + '</p>' : '') +
+      '<p class="codigo">' + A.esc(llave) + '</p><p>Creada el ' + A.fechaES(A.hoyISO()) + ' con ' + A.esc(A.APP.nombre) + '.</p>' +
+      '<ol><li>Con esta llave se pueden abrir los datos de la entidad y poner una contraseña nueva si se olvida la actual.</li>' +
+      '<li>Guardadla en un sobre cerrado, custodiado por la presidencia o en la caja fuerte de la entidad, separada del ordenador.</li>' +
+      '<li>Quien tenga esta llave puede ver todos los datos. Si se pierde o alguien no autorizado la ve, cread una nueva en «Datos y copias»: la anterior dejará de servir.</li>' +
+      '<li>Abre también las copias de seguridad hechas desde hoy, aunque no las que se hicieron antes.</li></ol>' +
+      '<p class="firma">Custodia: ____________________________ &nbsp; Fecha: ______________</p></div>';
+  }
+  A.imprimirLlave = function (llave) { A.imprimir('Llave de recuperación', hojaLlave(llave)); };
+
+  /* Muestra la llave recién creada. Si es obligatoria, no se cierra hasta confirmar que está guardada */
+  A.mostrarLlave = function (llave, obligatoria) {
+    return A.modal({ titulo: 'Guardad la llave de recuperación', obligatorio: !!obligatoria, html:
+      '<p>Si algún día nadie recuerda la contraseña, esta llave es la única forma de recuperar los datos. ' + A.esc(A.APP.nombre) + ' no la guarda en ningún otro sitio y no se vuelve a mostrar.</p>' +
+      '<p class="llave-codigo mono" aria-label="Llave de recuperación">' + A.esc(llave) + '</p>' +
+      '<div class="barra"><button type="button" id="b-imp-llave">' + A.icono('imprimir') + ' Imprimir</button><button type="button" id="b-cop-llave">Copiar</button></div>' +
+      '<p class="gris">Imprimidla y guardadla en un sobre cerrado, lejos del ordenador. No la mandéis por correo ni la guardéis junto a la contraseña.</p>' +
+      A.campo('guardada', 'He impreso o anotado la llave y la guardaré en lugar seguro', false, { tipo: 'checkbox' }),
+      botones: [{ texto: 'Continuar', valor: true, clase: 'principal', antes: function (f) {
+        if (!A.$('input[name=guardada]', f).checked) { A.toast('Marca la casilla cuando hayas guardado la llave.', 'mal'); return false; }
+      } }],
+      alAbrir: function (f) {
+        A.$('#b-imp-llave', f).addEventListener('click', function () { A.imprimirLlave(llave); });
+        A.$('#b-cop-llave', f).addEventListener('click', function () {
+          (navigator.clipboard ? navigator.clipboard.writeText(llave) : Promise.reject()).then(function () { A.toast('Llave copiada. Pégala en un lugar seguro y bórrala del portapapeles.'); }, function () { A.toast('No se pudo copiar: anótala a mano.', 'mal'); });
+        });
+      } });
+  };
+
+  /* Después de entrar con la llave hay que elegir contraseña nueva */
+  A.pedirNuevaPassword = function () {
+    return A.modal({ titulo: 'Elige una contraseña nueva', obligatorio: true, html:
+      '<p>Has entrado con la llave de recuperación. Elige ahora la contraseña con la que trabajaréis a partir de hoy. La llave sigue sirviendo.</p>' +
+      '<form id="f-nueva" novalidate>' + A.campo('n1', 'Contraseña nueva', '', { tipo: 'password', attrs: ' autocomplete="new-password"', ayuda: 'Mínimo 10 caracteres, con mayúsculas, minúsculas y números.' }) +
+      A.campo('n2', 'Repite la contraseña', '', { tipo: 'password', attrs: ' autocomplete="new-password"' }) + '</form>',
+      botones: [{ texto: 'Guardar contraseña', valor: true, clase: 'principal', antes: async function (f) {
+        var a = A.$('input[name=n1]', f).value, b = A.$('input[name=n2]', f).value, fp = A.fuerzaPassword(a);
+        if (fp.length) throw new Error('La contraseña necesita ' + fp.join(', ') + '.');
+        if (a !== b) throw new Error('Las contraseñas no coinciden.');
+        await A.ponerPassword(a, 'Nueva contraseña tras usar la llave de recuperación');
+      } }] }).then(function () { A.toast('Contraseña cambiada. Ya podéis entrar con ella.'); });
   };
 
   /* Hermandad de ejemplo: cofrades asociados con historial y dos salidas con tarjetas de sitio */
@@ -1603,6 +1806,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return { nombre: nombres[perfil], perfil: perfil, nif: 'G18123455', direccion: 'C/ Ejemplo, 1', cp: '18010', localidad: 'Granada', provincia: 'Granada', email: 'secretaria@ejemplo.org' };
   };
   A.rellenarEjemplo = function (db) {
+    db.ejemplo = true;
     var semilla = 7; function rnd() { semilla = (semilla * 16807) % 2147483647; return (semilla - 1) / 2147483646; }
     function elige(l) { return l[Math.floor(rnd() * l.length)]; }
     var nom = ['Lucía', 'Hugo', 'Martina', 'Mateo', 'Sofía', 'Leo', 'Julia', 'Daniel', 'Paula', 'Álvaro', 'Carmen', 'Manuel', 'Rocío', 'Antonio', 'Elena', 'José', 'Inés', 'Pablo', 'Marta', 'Javier', 'Alba', 'Rafael', 'Noelia', 'Francisco'];
@@ -1655,6 +1859,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var diasCopia = db.ultimaCopia ? A.diasEntre(db.ultimaCopia.slice(0, 10), A.hoyISO()) : null;
     if (diasCopia === null || diasCopia > db.ajustes.recordatorioCopiaDias)
       avisos.push(['atencion', diasCopia === null ? 'Todavía no has descargado ninguna copia de seguridad.' : 'Tu última copia de seguridad tiene ' + diasCopia + ' días.', '#/datos', 'Hacer copia']);
+    if (A.llaveCreada() === null && !db.ejemplo) avisos.push(['atencion', 'No tenéis llave de recuperación: si se olvida la contraseña, no se podrán abrir los datos.', '#/datos', 'Crear llave']);
     if (A.S.estadoFichero === 'pendiente-permiso') avisos.push(['atencion', 'El guardado automático en tu fichero está en pausa hasta que lo autorices.', '#/datos', 'Reactivar']);
     if (!A.validaIBAN(db.sepa.iban) || !A.validaIdentificadorAcreedor(db.sepa.identificador)) avisos.push(['info', 'Completa los datos bancarios de la entidad para poder generar remesas.', '#/configuracion', 'Configurar']);
     if (!db.tiposCuota.length) avisos.push(['info', 'Define al menos un tipo de cuota.', '#/cuotas?pestana=tipos', 'Crear cuota']);
@@ -1759,7 +1964,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var db = A.S.db, v = A.vocab(db);
     var orig = id ? A.miembroPorId(db, id) : null;
     var m = Object.assign({}, orig || A.miembroVacio(db));
-    var cargos = id ? A.ordenarPor(db.cargos.filter(function (x) { return x.miembroId === id; }), 'periodo', true) : [];
+    var cargos = id ? A.ordenarPor(A.cargosDe(db, id), 'periodo', true) : [];
     var tipos = [['', '— Sin cuota —']].concat(db.tiposCuota.map(function (t) { return [t.id, t.nombre + ' · ' + A.euros(t.importeCent) + ' · ' + A.PERIODICIDADES[t.periodicidad]]; }));
     var html = '<form id="f-miembro" novalidate>' +
       '<fieldset><legend>Datos personales</legend><div class="columnas">' +
@@ -2095,7 +2300,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (f) {
       var resumen = function () {
         var sel = A.$$('input[name=sel]:checked', f).map(function (i) { return i.value; });
-        var tot = sel.reduce(function (s, id) { return s + db.cargos.find(function (x) { return x.id === id; }).importeCent; }, 0);
+        var tot = sel.reduce(function (s, id) { return s + A.cargoPorId(db, id).importeCent; }, 0);
         A.$('#resumen-rem', c).textContent = sel.length + ' recibos seleccionados · ' + A.euros(tot);
       };
       resumen();
@@ -2138,7 +2343,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   function dialogoDevoluciones(db, remesaId) {
     var r = db.remesas.find(function (x) { return x.id === remesaId; });
-    var cargos = r.cargoIds.map(function (id) { return db.cargos.find(function (x) { return x.id === id; }); }).filter(Boolean);
+    var cargos = r.cargoIds.map(function (id) { return A.cargoPorId(db, id); }).filter(Boolean);
     A.modal({ titulo: 'Devoluciones de la remesa ' + r.msgId, ancho: true, html: '<p>Marca los recibos que el banco ha devuelto. Volverán a quedar pendientes de cobro (podrás incluirlos en otra remesa o cobrarlos de otra forma).</p>' +
       '<div class="tabla-envoltorio"><table><thead><tr><th></th><th>' + A.vocab(db).Miembro + '</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>' + cargos.map(function (x) {
         var m = A.miembroPorId(db, x.miembroId);
@@ -2338,10 +2543,16 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       '<section class="tarjeta"><h2>Traspaso de junta o cambio de ordenador</h2><ol><li>Descarga una copia cifrada.</li><li>Entrega el fichero y, <strong>por otra vía</strong>, la contraseña a la nueva persona responsable.</li>' +
       '<li>Ella abre ' + A.APP.nombre + ' en su equipo y elige «Abrir una copia».</li><li>Al terminar, cambiad la contraseña y borrad los datos del equipo anterior.</li></ol></section>' +
       '<section class="tarjeta"><h2>Restaurar una copia</h2><p>Sustituye todos los datos actuales por los de una copia.</p>' + A.campo('fich', 'Fichero de copia (' + A.APP.extension + ')', '', { tipo: 'file', attrs: ' accept=".alcancia,.asociapp,.asocia,application/json"' }) +
-      A.campo('pr', 'Contraseña de esa copia', '', { tipo: 'password' }) + '<button data-a="restaurar">Restaurar</button></section>' +
+      A.campo('pr', 'Contraseña de esa copia (o su llave de recuperación)', '', { tipo: 'password' }) + '<button data-a="restaurar">Restaurar</button></section>' +
       '<section class="tarjeta"><h2>Contraseña</h2><form id="f-pass" novalidate class="columnas">' + A.campo('actual', 'Contraseña actual', '', { tipo: 'password', attrs: ' autocomplete="current-password"' }) +
       A.campo('nueva', 'Nueva contraseña', '', { tipo: 'password', attrs: ' autocomplete="new-password"' }) + A.campo('nueva2', 'Repite la nueva', '', { tipo: 'password', attrs: ' autocomplete="new-password"' }) +
       '</form><button data-a="pass">Cambiar contraseña</button></section>' +
+      '<section class="tarjeta" id="llave"><h2>Llave de recuperación</h2>' + (A.llaveCreada() !== null ?
+        '<p>Creada el <strong>' + A.fechaES(A.llaveCreada()) + '</strong>. Si nadie recuerda la contraseña, con ella se abren los datos y se pone una nueva.</p>' +
+        '<p class="gris">Si la llave se ha perdido o la ha visto alguien que no debía, crea una nueva: la anterior dejará de abrir los datos actuales y las copias que hagáis a partir de ahora.</p>' +
+        '<button data-a="llave">Crear una llave nueva</button>'
+        : '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>No tenéis llave de recuperación: si se olvida la contraseña, los datos no se podrán abrir.</p></div></div>' +
+        '<button class="principal" data-a="llave">Crear la llave de recuperación</button>') + '</section>' +
       '<section class="tarjeta"><h2>Borrar los datos de este equipo</h2><p>Elimina los datos guardados en este navegador (no borra los ficheros de copia). Úsalo al dejar el cargo o antes de entregar el ordenador.</p><button class="peligro" data-a="borrar">Borrar datos de este navegador</button></section>';
     c.addEventListener('click', async function (e) {
       var b = e.target.closest('[data-a]'); if (!b) return;
@@ -2354,7 +2565,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         if (a === 'restaurar') {
           var inp = A.$('input[name=fich]', c); if (!inp.files[0]) throw new Error('Elige el fichero.');
           if (!(await A.confirmar('Restaurar copia', 'Se sustituirán TODOS los datos actuales por los de la copia.', 'Restaurar', true))) return;
-          await A.abrirDesdeTexto(await inp.files[0].text(), A.$('input[name=pr]', c).value);
+          var via = await A.abrirDesdeTexto(await inp.files[0].text(), A.$('input[name=pr]', c).value);
+          if (via === 'recuperacion') await A.pedirNuevaPassword();
           A.toast('Copia restaurada.'); A.ir('panel');
         }
         if (a === 'pass') {
@@ -2363,6 +2575,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
           if (f.nueva !== f.nueva2) throw new Error('Las contraseñas nuevas no coinciden.');
           await A.cambiarPassword(f.actual, f.nueva);
           A.toast('Contraseña cambiada. Las copias anteriores siguen usando la contraseña antigua.'); A.pintar();
+        }
+        if (a === 'llave') {
+          if (A.llaveCreada() !== null && !(await A.confirmar('Crear una llave nueva', 'La llave actual dejará de abrir los datos. Las copias de seguridad ya hechas seguirán abriéndose con la llave antigua.', 'Crear llave nueva'))) return;
+          await A.mostrarLlave(await A.crearLlave(), true); A.pintar();
         }
         if (a === 'borrar') {
           if (await A.confirmar('Borrar datos', 'Se eliminarán los datos de este navegador. Asegúrate de tener una copia reciente.', 'Borrar', true)) { await A.borrarTodo(); location.hash = ''; A.pintar(); }
@@ -2433,6 +2649,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       bloque('Primeros pasos', '<ol><li>En <a href="#/configuracion">Configuración</a>, completa los datos de la entidad y los bancarios.</li><li>En <a href="#/cuotas?pestana=tipos">Cuotas › Tipos</a>, crea las cuotas que cobráis.</li>' +
         '<li>Da de alta a los ' + v.miembros + ' o impórtalos desde vuestra hoja de cálculo.</li><li>Cada periodo, genera las cuotas y crea la remesa para el banco.</li><li>Descarga una copia de seguridad cada semana.</li></ol>') +
       bloque('¿Dónde están mis datos?', '<p>Solo en este equipo, cifrados con vuestra contraseña: en el navegador y, si lo activas, en un fichero de vuestra elección. ' + A.APP.nombre + ' no tiene servidor ni recibe datos. Si borras el navegador sin copia, los datos se pierden.</p>') +
+      bloque('¿Y si se olvida la contraseña?', '<p>En la pantalla de entrada, pulsa «¿Habéis olvidado la contraseña?» y escribe la <strong>llave de recuperación</strong> impresa: entraréis y elegiréis una contraseña nueva. La llave también abre las copias de seguridad hechas después de crearla. Puedes crear una llave nueva en <a href="#/datos">Datos y copias</a> si la anterior se pierde.</p>') +
       (v.salidas ? bloque('Salidas y tarjetas de sitio', '<ol><li>En <a href="#/salidas">Salidas</a>, crea la salida (por ejemplo, «Estación de penitencia 2027»). Puedes copiar los tipos de tarjeta del año anterior.</li>' +
         '<li>En «Tipos y precios», ajusta cada tipo (cirio, insignia, vara, costalero…), su precio y, si quieres, el número de plazas.</li><li>Durante el reparto, «Emitir tarjeta»: elige el ' + v.miembro + ', el tipo y si paga en el momento. Se avisa si tiene cuotas pendientes.</li>' +
         '<li>En «Resumen y listados», imprime el listado de cada tipo de tarjetas pagadas y las propias tarjetas (seis por hoja).</li><li>Al terminar, cierra la salida. Queda en el historial de cada ' + v.miembro + '.</li></ol>') : '') +
@@ -2567,9 +2784,11 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         return [x.t.numero, x.m && x.m.numero, x.m && A.nombreCompleto(x.m), x.t.puesto].some(function (y) { return A.normaliza(y).indexOf(t) >= 0; });
       });
       var total = filas.reduce(function (a, x) { return a + (x.t.estado === 'anulada' ? 0 : x.t.importeCent); }, 0);
-      A.$('#lista-tarjetas', cont).innerHTML = '<p class="gris" aria-live="polite">' + filas.length + ' tarjetas · ' + A.euros(total) + '</p>' + (filas.length ?
+      var MAX = 500, visibles = filas.slice(0, MAX);
+      A.$('#lista-tarjetas', cont).innerHTML = '<p class="gris" aria-live="polite">' + filas.length + ' tarjetas · ' + A.euros(total) +
+        (filas.length > MAX ? ' · Se muestran las ' + MAX + ' primeras: usa el buscador o los filtros para encontrar el resto.' : '') + '</p>' + (filas.length ?
         '<div class="tabla-envoltorio"><table><thead><tr><th class="num">Tarjeta</th><th class="num">' + v.numero.replace('Nº de ', 'Nº') + '</th><th>Nombre</th><th>Tipo</th><th>Puesto</th><th class="num">Importe</th><th>Estado</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
-        filas.map(function (x) {
+        visibles.map(function (x) {
           var tj = x.t, m = x.m;
           var acc = tj.estado === 'pendiente' ? '<button class="mini" data-cobrar="' + tj.id + '">Cobrar</button>' : '';
           if (tj.estado !== 'anulada') acc += '<button class="mini" data-imprimir="' + tj.id + '">Imprimir</button>';
@@ -2645,7 +2864,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
 
   function dialogoCobro(db, id) {
-    var t = db.tarjetas.find(function (x) { return x.id === id; });
+    var t = A.tarjetaPorId(db, id);
     A.modal({ titulo: 'Cobrar tarjeta nº ' + t.numero, html: '<form id="f-cobro">' + '<p>' + A.esc(t.tipoNombre) + ' · <strong>' + A.euros(t.importeCent) + '</strong></p>' +
       A.campo('formaPago', 'Forma de pago', 'efectivo', { opciones: A.opcionesCobro() }) +
       A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + '</form>',
@@ -2655,7 +2874,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
 
   function dialogoTarjeta(db, s, id) {
-    var t = db.tarjetas.find(function (x) { return x.id === id; }), m = A.miembroPorId(db, t.miembroId), v = A.vocab(db);
+    var t = A.tarjetaPorId(db, id), m = A.miembroPorId(db, t.miembroId), v = A.vocab(db);
     var editable = t.estado !== 'anulada' && s.estado === 'abierta';
     var botones = [{ texto: 'Cerrar', valor: false }];
     if (editable) botones.push({ texto: 'Guardar cambios', valor: true, clase: 'principal', antes: function (raiz) {
