@@ -209,6 +209,12 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 var A = (typeof globalThis !== 'undefined' ? globalThis : window).A || {};
 (typeof globalThis !== 'undefined' ? globalThis : window).A = A;
 
+/* La aplicación necesita WebCrypto, que los navegadores solo activan en https (o en un fichero local).
+   Si se abre la web por http, se pasa a https antes de nada. */
+if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
+  location.replace('https:' + location.href.slice(5));
+}
+A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
 A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.2.0', formato: 'asocia-v1', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
@@ -469,9 +475,11 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return new Promise(function (ok, ko) {
       if (!window.indexedDB) return ko(new Error('Este navegador no permite guardar datos localmente.'));
       var r = indexedDB.open(BD, 1);
+      // algunos navegadores internos de apps nunca responden: no esperar indefinidamente
+      var reloj = setTimeout(function () { ko(new Error('El navegador no responde al guardar datos localmente.')); }, 5000);
       r.onupgradeneeded = function () { r.result.createObjectStore(ALM); };
-      r.onsuccess = function () { ok(r.result); };
-      r.onerror = function () { ko(r.error); };
+      r.onsuccess = function () { clearTimeout(reloj); ok(r.result); };
+      r.onerror = function () { clearTimeout(reloj); ko(r.error); };
     });
   }
   A.idbGet = async function (k) {
@@ -1474,6 +1482,12 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
 
   A.pantallaBienvenida = function (raiz) {
+    if (!A.puedeCifrar()) {
+      raiz.innerHTML = marco('<section class="tarjeta estrecha"><h2>No se puede abrir aquí</h2><p>Este navegador no permite cifrar los datos en esta página, así que ' + A.APP.nombre +
+        ' no puede guardar nada con seguridad. Suele pasar si la dirección empieza por <span class="mono">http://</span> o si se abre dentro de otra aplicación (LinkedIn, WhatsApp, Instagram…).</p>' +
+        '<p>Ábrelo en Chrome, Edge, Safari o Firefox con una dirección que empiece por <span class="mono">https://</span>.</p></section>');
+      return;
+    }
     raiz.innerHTML = marco('<div class="opciones">' +
       '<section class="tarjeta"><h2>Empezar con mi entidad</h2><form id="f-crear" novalidate>' +
       A.campo('nombre', 'Nombre de la entidad', '', { requerido: true }) +
@@ -2847,13 +2861,26 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return PERFILES.some(function (x) { return x[0] === p; }) ? p : null;
   }
 
+  /* Si el navegador no deja cifrar o guardar (página abierta por http, navegador interno de una app,
+     modo privado…), la demo sigue funcionando en memoria: solo se pierde al recargar. */
   async function arrancar(perfil) {
-    await A.crearEntidad(A.ejemploEntidad(perfil), CLAVE);
-    A.rellenarEjemplo(A.S.db);
-    A.S.db.ajustes.bloqueoMin = 240;
-    await A.guardarAhora();
+    var enMemoria = false;
+    try {
+      if (!A.puedeCifrar()) throw new Error('sin cifrado');
+      await A.crearEntidad(A.ejemploEntidad(perfil), CLAVE);
+      A.rellenarEjemplo(A.S.db);
+      A.S.db.ajustes.bloqueoMin = 240;
+      await A.guardarAhora();
+    } catch (e) {
+      enMemoria = true;
+      A.S.clave = null; A.S.salt = null; A.S.handle = null;
+      A.S.db = A.nuevaBD(A.ejemploEntidad(perfil));
+      A.rellenarEjemplo(A.S.db); A.S.db.ajustes.bloqueoMin = 240;
+    }
+    A.S.demoEnMemoria = enMemoria;
     location.hash = '#/panel'; await A.pintar();
-    A.toast('Demostración con datos inventados. Lo que cambies se guarda solo en este navegador.');
+    A.toast(enMemoria ? 'Demostración con datos inventados. Este navegador no deja guardar datos, así que si recargas la página vuelve a empezar.'
+                      : 'Demostración con datos inventados. Lo que cambies se guarda solo en este navegador.');
   }
 
   A.reiniciarDemo = async function (perfil) {
@@ -2896,7 +2923,9 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   var pintarOriginal = A.pintar;
   A.pintar = async function () {
     await pintarOriginal();
-    var cab = A.$('.cabecera'); if (!cab || A.$('.demo-acciones', cab)) return;
+    var cab = A.$('.cabecera'); if (!cab) return;
+    if (A.S.demoEnMemoria) { var est = A.$('.estado-guardado', cab); if (est) est.innerHTML = '<span class="punto aviso"></span><span class="texto-estado">Solo en memoria</span>'; }
+    if (A.$('.demo-acciones', cab)) return;
     var bl = A.$('#b-bloquear', cab); if (bl) bl.remove();
     var marca = A.$('.marca', cab);
     marca.insertAdjacentHTML('afterend', '<span class="demo-etiqueta" title="Datos inventados">Demo</span>');
