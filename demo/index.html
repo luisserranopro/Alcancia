@@ -65,7 +65,7 @@ details.historial[open] summary { margin-bottom: 8px; }
 .lateral svg { width: 18px; height: 18px; flex: none; }
 .contenido-app { padding: 24px 28px 60px; max-width: 1200px; width: 100%; }
 @media (max-width: 860px) {
-  .app { grid-template-columns: 1fr; }
+  .app { grid-template-columns: minmax(0, 1fr); }
   .lateral { border-right: 0; border-bottom: 1px solid var(--borde); padding: 6px 8px; overflow-x: auto; }
   .lateral nav { display: flex; gap: 4px; }
   .lateral nav a { white-space: nowrap; margin: 0; }
@@ -132,7 +132,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .aviso > div { flex: 1; }
 .aviso p:last-child { margin: 0; }
 
-.pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); margin-bottom: 16px; }
+.pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); margin-bottom: 16px; overflow-x: auto; }
 .pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; }
 .pestanas button[aria-selected="true"] { border-bottom-color: var(--primario); color: var(--primario); font-weight: 600; }
 
@@ -178,6 +178,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   #imprimir h1 { font-size: 16pt; } #imprimir table { font-size: 9.5pt; } #imprimir th { background: #eee; position: static; }
   #imprimir th, #imprimir td { border: 1px solid #999; padding: 4px 6px; }
   .salto { page-break-after: always; }
+  .certificado { break-after: page; font-size: 11pt; line-height: 1.55; }
+  .certificado:last-of-type { break-after: auto; }
+  .certificado h2 { font-size: 14pt; margin: 0 0 6mm; }
+  .certificado .donante { margin: 4mm 0 4mm 8mm; }
+  .certificado table { width: 100%; border-collapse: collapse; margin: 4mm 0; }
+  .certificado th { text-align: left; width: 35%; }
+  .firmas { display: flex; justify-content: space-between; gap: 10mm; margin-top: 14mm; }
+  .firmas > div { flex: 1; }
   .carnes { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; }
   .tarjetas-sitio { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
   .tarjeta-sitio { border: 1.5px dashed #555; height: 82mm; padding: 6mm; display: flex; flex-direction: column; gap: 2mm; break-inside: avoid; font-size: 10.5pt; }
@@ -208,6 +216,14 @@ button.enlace { background: none; border: 0; padding: 0; min-height: 0; color: v
 #imprimir .hoja-llave .codigo { font: 700 20pt ui-monospace, Consolas, monospace; letter-spacing: .08em; border: 2px dashed #000; padding: 8mm 4mm; text-align: center; margin: 6mm 0; }
 #imprimir .hoja-llave li { margin-bottom: 2mm; }
 #imprimir .hoja-llave .firma { margin-top: 14mm; }
+
+/* el contenido nunca ensancha la página: las tablas se desplazan dentro de su envoltorio */
+.contenido-app { min-width: 0; }
+.barra > * { min-width: 0; max-width: 100%; }
+.barra .crece { flex: 1 1 220px; }
+select, input, textarea { max-width: 100%; }
+.app { overflow-x: clip; }
+.tabla-envoltorio { position: relative; }
 </style>
 </head>
 <body>
@@ -225,7 +241,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.3.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.4.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -642,7 +658,13 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     A.S.guardando = false;
     if (A.alGuardar) A.alGuardar();
   };
-  A.guardar = A.debounce(function () { A.guardarAhora(); }, 400);
+  /* Guardado diferido: espera a que se deje de tocar 400 ms, pero nunca más de 2 s aunque se siga trabajando */
+  var reloj = null, primero = 0;
+  A.guardar = function () {
+    var ahora = Date.now(); if (!reloj) primero = ahora;
+    clearTimeout(reloj);
+    reloj = setTimeout(function () { reloj = null; A.guardarAhora(); }, ahora - primero > 1600 ? 0 : 400);
+  };
 
   /* Fichero de datos en disco (Chrome y Edge): permite guardar en una carpeta sincronizada de la propia entidad */
   A.puedeUsarFichero = function () { return typeof window !== 'undefined' && 'showSaveFilePicker' in window; };
@@ -889,9 +911,9 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 (function (A) {
   A.PERFILES = {
     asociacion: { etiqueta: 'Asociación', miembro: 'socio', miembros: 'socios', Miembro: 'Socio', Miembros: 'Socios', numero: 'Nº de socio', extra: 'Grupo o sección', entidad: 'la asociación' },
-    hermandad: { etiqueta: 'Hermandad o cofradía', miembro: 'hermano', miembros: 'hermanos', Miembro: 'Hermano/a', Miembros: 'Hermanos', numero: 'Nº de hermano', extra: 'Cargo o grupo (costalero, nazareno, coro…)', entidad: 'la hermandad', antiguedad: true, salidas: true },
+    hermandad: { etiqueta: 'Hermandad o cofradía', miembro: 'hermano', miembros: 'hermanos', Miembro: 'Hermano/a', Miembros: 'Hermanos', numero: 'Nº de hermano', extra: 'Cargo o grupo (costalero, nazareno, coro…)', entidad: 'la hermandad', antiguedad: true, enseres: true, salidas: true },
     ampa: { etiqueta: 'AMPA / AFA', miembro: 'familia', miembros: 'familias', Miembro: 'Familia', Miembros: 'Familias', numero: 'Nº de socio', extra: 'Alumnos (nombre y curso)', entidad: 'el AMPA' },
-    club: { etiqueta: 'Club deportivo', miembro: 'deportista', miembros: 'deportistas', Miembro: 'Deportista', Miembros: 'Deportistas', numero: 'Nº de ficha', extra: 'Categoría o equipo', entidad: 'el club', categorias: true },
+    club: { etiqueta: 'Club deportivo', miembro: 'deportista', miembros: 'deportistas', Miembro: 'Deportista', Miembros: 'Deportistas', numero: 'Nº de ficha', extra: 'Categoría o equipo', entidad: 'el club', categorias: true, enseres: true },
   };
   A.vocab = function (db) { return A.PERFILES[(db && db.entidad && db.entidad.perfil) || 'asociacion'] || A.PERFILES.asociacion; };
 
@@ -907,16 +929,18 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       sepa: { nombre: (entidad && entidad.nombre) || '', iban: '', bic: '', sufijo: '000', identificador: '' },
       ajustes: Object.assign({}, A.AJUSTES_DEFECTO),
       tiposCuota: [], miembros: [], cargos: [], remesas: [], salidas: [], tarjetas: [], registro: [], ultimaCopia: null,
+      enseres: [], prestamos: [], actividades: [], inscripciones: [], talonarios: [], fiscal: Object.assign({}, A.FISCAL_DEFECTO),
     };
   };
 
   /* condicionCofrade: distingue cofrades activos y asociados (Archidiócesis de Granada). votoEdadMin y votoAntiguedadMin según estatutos */
-  A.AJUSTES_DEFECTO = { bloqueoMin: 15, recordatorioCopiaDias: 7, conservarBajasAnios: 5, condicionCofrade: false, votoEdadMin: 18, votoAntiguedadMin: 1 };
-  A.VERSION_DATOS = 2;
+  A.AJUSTES_DEFECTO = { bloqueoMin: 15, recordatorioCopiaDias: 7, conservarBajasAnios: 5, condicionCofrade: false, votoEdadMin: 18, votoAntiguedadMin: 1, usarEnseres: false };
+  A.VERSION_DATOS = 3;
 
   A.migrar = function (db) {
     if (!db.version) db.version = 1;
-    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
+    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
+    db.fiscal = Object.assign({}, A.FISCAL_DEFECTO, db.fiscal || {});
     db.ajustes = Object.assign({}, A.AJUSTES_DEFECTO, db.ajustes || {});
     db.miembros.forEach(function (m) {
       if (!m.condicion) m.condicion = 'activo';
@@ -1157,6 +1181,12 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       }),
       tarjetasDeSitio: A.historialTarjetas ? A.historialTarjetas(db, id).map(function (h) {
         return { salida: h.salida, fecha: h.fecha, tipo: h.tipo, numero: h.numero, puesto: h.puesto, importe: A.decimalPunto(h.importeCent), estado: h.estado, fechaPago: h.fechaPago };
+      }) : [],
+      prestamos: A.prestamosDe ? A.prestamosDe(db, id).map(function (x) {
+        return { pieza: x.e ? x.e.nombre + ' ' + (x.e.codigo || '') : '', fechaPrestamo: x.p.fechaPrestamo, fechaDevolucion: x.p.fechaDevolucion, fianza: A.decimalPunto(x.p.fianzaCent), estadoFianza: x.p.fianzaEstado };
+      }) : [],
+      actividades: A.actividadesDe ? A.actividadesDe(db, id).map(function (x) {
+        return { actividad: x.actividad, fecha: x.fecha, detalle: x.detalle, importe: A.decimalPunto(x.importeCent), pagado: A.decimalPunto(x.pagadoCent), estado: x.estado };
       }) : [] };
   };
 
@@ -1167,6 +1197,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     db.miembros = db.miembros.filter(function (x) { return x.id !== id; });
     db.cargos.forEach(function (c) { if (c.miembroId === id) { c.miembroId = 'suprimido'; c.concepto = c.concepto.replace(/ - .*$/, ''); } });
     (db.tarjetas || []).forEach(function (t) { if (t.miembroId === id) { t.miembroId = 'suprimido'; t.puesto = ''; t.observaciones = ''; } });
+    (db.prestamos || []).forEach(function (p) { if (p.miembroId === id) { p.miembroId = 'suprimido'; p.observaciones = ''; } });
+    (db.inscripciones || []).forEach(function (x) { if (x.miembroId === id) { x.miembroId = 'suprimido'; x.detalle = ''; x.observaciones = ''; } });
+    (db.talonarios || []).forEach(function (t) { if (t.miembroId === id) t.miembroId = 'suprimido'; });
+    if (db.fiscal && db.fiscal.recurrentes) Object.keys(db.fiscal.recurrentes).forEach(function (a) { delete db.fiscal.recurrentes[a][id]; });
     A.log(db, 'Supresión de datos del nº ' + m.numero + ' (derecho de supresión o fin del plazo de conservación)');
     return true;
   };
@@ -1470,6 +1504,464 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 })(A);
 
+/* Alcancía · donativos: certificados y modelo 182 (declaración informativa de donativos, AEAT)
+   Diseño de registro: Orden EHA/3021/2007, con sus modificaciones (la última sobre el % de deducción,
+   Orden HAC/1504/2024). Registros de 250 posiciones, texto ISO-8859-1, uno por línea.
+   Las cuotas de afiliación sin contraprestación cuentan como donativo (art. 17 Ley 49/2002) solo si la
+   entidad está acogida a la ley: lo confirma la propia entidad en Configuración. */
+'use strict';
+(function (A) {
+  A.FISCAL_DEFECTO = { acogida: false, naturaleza: '1', contacto: '', telefono: '', justificante: '' };
+  A.NATURALEZAS_DECLARANTE = [['1', '1 · Entidad beneficiaria del mecenazgo (Ley 49/2002, art. 16)'], ['2', '2 · Fundación o asociación de utilidad pública no acogida a la Ley 49/2002']];
+
+  A.usaDonativos = function (db) { return !!(db.fiscal && db.fiscal.acogida); };
+
+  /* ¿Este cargo cuenta como donativo? Cuotas de tipos marcados como deducibles y donativos sueltos, pagados */
+  A.esDonativo = function (db, c) {
+    if (c.estado !== 'pagado' || !c.fechaPago) return false;
+    if (c.donativo) return true;
+    var t = db.tiposCuota.find(function (x) { return x.id === c.tipoCuotaId; });
+    return !!(t && t.deducible);
+  };
+
+  /* Importe donado por cada miembro en un año (por fecha de pago) */
+  A.donadoPorMiembro = function (db, anio) {
+    var r = new Map(); anio = String(anio);
+    db.cargos.forEach(function (c) {
+      if (c.miembroId === 'suprimido' || !A.esDonativo(db, c) || c.fechaPago.slice(0, 4) !== anio) return;
+      r.set(c.miembroId, (r.get(c.miembroId) || 0) + c.importeCent);
+    });
+    return r;
+  };
+
+  /* Donativo suelto (no es cuota): se registra ya cobrado */
+  A.registrarDonativo = function (db, op) {
+    var m = A.miembroPorId(db, op.miembroId); if (!m) throw new Error('Elige a quién corresponde el donativo.');
+    if (!(op.importeCent > 0)) throw new Error('El importe no es válido.');
+    var c = { id: A.uid('c'), miembroId: m.id, tipoCuotaId: '', donativo: true, periodo: (op.fecha || A.hoyISO()).slice(0, 4),
+      concepto: op.concepto || 'Donativo', importeCent: op.importeCent, estado: 'pagado', formaPago: op.formaPago || 'efectivo',
+      fechaPago: op.fecha || A.hoyISO(), remesaId: '', creado: new Date().toISOString() };
+    db.cargos.push(c);
+    A.log(db, 'Donativo de ' + A.euros(c.importeCent) + ' del nº ' + m.numero);
+    return c;
+  };
+
+  /* Recurrencia (art. 19 Ley 49/2002): donativos a la misma entidad en los dos años anteriores,
+     cada uno por importe igual o superior al del año anterior a él. La entidad puede corregirla a mano
+     (por ejemplo, si los años anteriores no están en Alcancía). */
+  A.esRecurrente = function (db, miembroId, anio, previos) {
+    var f = db.fiscal || {}, man = f.recurrentes && f.recurrentes[anio] && f.recurrentes[anio][miembroId];
+    if (man === true || man === false) return man;
+    previos = previos || [1, 2, 3].map(function (k) { return A.donadoPorMiembro(db, anio - k); });
+    var d1 = previos[0].get(miembroId) || 0, d2 = previos[1].get(miembroId) || 0, d3 = previos[2].get(miembroId) || 0;
+    return d1 > 0 && d2 > 0 && d1 >= d2 && d2 >= d3;
+  };
+  A.fijarRecurrencia = function (db, miembroId, anio, valor) {
+    db.fiscal.recurrentes = db.fiscal.recurrentes || {};
+    var r = db.fiscal.recurrentes[anio] = db.fiscal.recurrentes[anio] || {};
+    if (valor === null) delete r[miembroId]; else r[miembroId] = !!valor;
+  };
+
+  /* Naturaleza del declarado por su NIF: F física (DNI/NIE), J jurídica, E entidad en atribución de rentas */
+  A.naturalezaNIF = function (nif) {
+    var s = A.limpiaDoc(nif);
+    if (/^[0-9XYZKLM]/.test(s)) return 'F';
+    if (/^[EHJ]/.test(s)) return 'E';
+    return s ? 'J' : '';
+  };
+
+  /* Porcentaje de deducción que se consigna (posiciones 79-83). Personas físicas (IRPF): el del tramo que supera
+     250 € (40 %, o 45 % si es recurrente); si no se superan 250 €, el 80 %. Personas jurídicas (IS): 40 %, o 50 %
+     si es recurrente. Hacienda reparte después los tramos con los donativos de cada contribuyente. */
+  A.porcentajeDeduccion = function (naturaleza, importeCent, recurrente) {
+    if (naturaleza === 'J') return recurrente ? 50 : 40;
+    if (importeCent <= 25000) return 80;
+    return recurrente ? 45 : 40;
+  };
+
+  /* Código de provincia a partir del código postal (los dos primeros dígitos); 99 si no hay */
+  A.provinciaDeCP = function (cp) { var s = String(cp || '').replace(/\D/g, ''); return s.length === 5 && +s.slice(0, 2) >= 1 && +s.slice(0, 2) <= 52 ? s.slice(0, 2) : ''; };
+
+  /* Relación de declarados de un ejercicio con sus avisos */
+  A.declaracion182 = function (db, anio) {
+    anio = +anio;
+    var donado = A.donadoPorMiembro(db, anio), filas = [];
+    var previos = [1, 2, 3].map(function (k) { return A.donadoPorMiembro(db, anio - k); });
+    donado.forEach(function (importe, id) {
+      var m = A.miembroPorId(db, id); if (!m || importe <= 0) return;
+      var nif = A.limpiaDoc(m.documento), nat = A.naturalezaNIF(nif), menor = (A.edad(m.fechaNacimiento) !== null && A.edad(m.fechaNacimiento) < 14);
+      var problemas = [];
+      if (!nif) problemas.push('Falta el NIF');
+      else if (nat === 'F' ? !A.validaDNI(nif) : !A.validaCIF(nif)) problemas.push('El NIF no es válido');
+      var prov = A.provinciaDeCP(m.cp); if (!prov) problemas.push('Falta el código postal');
+      var rep = menor ? A.limpiaDoc(m.tutorDocumento) : '';
+      if (menor && !rep) problemas.push('Menor de 14 años sin NIF de su representante');
+      var rec = A.esRecurrente(db, id, anio, previos);
+      filas.push({ m: m, nif: nif, naturaleza: nat || 'F', provincia: prov, importeCent: importe, recurrente: rec,
+        manual: !!(db.fiscal.recurrentes && db.fiscal.recurrentes[anio] && id in db.fiscal.recurrentes[anio]),
+        porcentaje: A.porcentajeDeduccion(nat || 'F', importe, rec), representante: rep, problemas: problemas });
+    });
+    filas.sort(function (a, b) { return A.comparaTexto(A.nombreOrden(a.m), A.nombreOrden(b.m)); });
+    var validas = filas.filter(function (f) { return !f.problemas.length; });
+    var avisos = [];
+    if (!A.validaCIF(db.entidad.nif) && !A.validaDNI(db.entidad.nif)) avisos.push('Falta el NIF de la entidad o no es válido (Configuración).');
+    if (!db.fiscal.contacto || !/^\d{9}$/.test(String(db.fiscal.telefono || '').replace(/\D/g, ''))) avisos.push('Indica la persona de contacto y un teléfono de 9 cifras (Configuración › Donativos).');
+    return { anio: anio, filas: filas, validas: validas, excluidas: filas.length - validas.length, avisos: avisos,
+      totalCent: validas.reduce(function (s, f) { return s + f.importeCent; }, 0) };
+  };
+
+  /* ---------- fichero ---------- */
+  /* Texto para los campos alfanuméricos: mayúsculas, sin tildes (se conservan Ñ y Ç), solo caracteres admitidos */
+  A.textoAEAT = function (s) {
+    return String(s || '').toUpperCase().replace(/[ÁÀÄÂ]/g, 'A').replace(/[ÉÈËÊ]/g, 'E').replace(/[ÍÌÏÎ]/g, 'I').replace(/[ÓÒÖÔ]/g, 'O').replace(/[ÚÙÜÛ]/g, 'U')
+      .replace(/[ªº]/g, '').replace(/[^A-Z0-9ÑÇ &.,'\-]/g, ' ').replace(/\s+/g, ' ').trim();
+  };
+  function alfa(s, n) { s = A.textoAEAT(s).slice(0, n); return s + ' '.repeat(n - s.length); }
+  function num(v, n) { var s = String(Math.max(0, Math.round(+v || 0))); if (s.length > n) throw new Error('Cifra demasiado larga para el fichero: ' + s); return '0'.repeat(n - s.length) + s; }
+  function nifCampo(nif) { var s = A.limpiaDoc(nif).slice(0, 9); return '0'.repeat(9 - s.length) + s; }
+  function apellidosNombre(m) { return [m.apellidos, m.nombre].filter(Boolean).join(' '); }   // primer apellido, segundo, nombre
+
+  A.fichero182 = function (db, anio, op) {
+    op = op || {};
+    var d = A.declaracion182(db, anio), f = db.fiscal, e = db.entidad, ej = String(anio);
+    if (d.avisos.length) throw new Error(d.avisos.join(' '));
+    if (!d.validas.length) throw new Error('No hay donativos que declarar en ' + anio + '.');
+    var justificante = String(op.justificante || f.justificante || '1820000000001').replace(/\D/g, '');
+    if (!/^182\d{10}$/.test(justificante)) throw new Error('El número de justificante tiene 13 cifras y empieza por 182.');
+    var tel = String(f.telefono).replace(/\D/g, '');
+    var r1 = '1' + '182' + ej + nifCampo(e.nif) + alfa(e.nombre, 40) + 'T' + num(tel, 9) + alfa(f.contacto, 40) + justificante +
+      (op.complementaria ? 'C' : ' ') + (op.sustitutiva ? 'S' : ' ') + num(op.anterior || 0, 13) +
+      num(d.validas.length, 9) + num(d.totalCent, 15) + String(f.naturaleza || '1') + ' '.repeat(90);
+    var lineas = [r1];
+    d.validas.forEach(function (x) {
+      var r = '2' + '182' + ej + nifCampo(e.nif) + nifCampo(x.nif) + (x.representante ? nifCampo(x.representante) : ' '.repeat(9)) +
+        alfa(apellidosNombre(x.m), 40) + x.provincia + 'A' + num(x.porcentaje * 100, 5) + num(x.importeCent, 13) + ' ' +
+        ' '.repeat(7) + x.naturaleza + ' ' + '0000' + ' ' + ' '.repeat(20) + (x.recurrente ? '1' : '2') + ' '.repeat(118);
+      lineas.push(r);
+    });
+    lineas.forEach(function (l, i) { if (l.length !== 250) throw new Error('Registro ' + (i + 1) + ' con longitud ' + l.length); });
+    return { texto: lineas.join('\r\n') + '\r\n', registros: d.validas.length, totalCent: d.totalCent, excluidas: d.excluidas };
+  };
+
+  /* El fichero se entrega en ISO-8859-1 */
+  A.latin1 = function (texto) {
+    var b = new Uint8Array(texto.length);
+    for (var i = 0; i < texto.length; i++) { var c = texto.charCodeAt(i); b[i] = c < 256 ? c : 63; }
+    return b;
+  };
+
+  /* Datos de un certificado de donativos (art. 24 Ley 49/2002) */
+  A.certificadoDonativos = function (db, miembroId, anio) {
+    var m = A.miembroPorId(db, miembroId); if (!m) return null;
+    var pagos = db.cargos.filter(function (c) { return c.miembroId === miembroId && A.esDonativo(db, c) && c.fechaPago.slice(0, 4) === String(anio); })
+      .sort(function (a, b) { return a.fechaPago < b.fechaPago ? -1 : 1; });
+    return { m: m, pagos: pagos, totalCent: pagos.reduce(function (s, c) { return s + c.importeCent; }, 0) };
+  };
+})(A);
+
+/* Alcancía · enseres y material prestado (túnicas, capirotes, insignias, equipaciones…)
+   Inventario de piezas, préstamos a miembros con fecha prevista de devolución, fianza e historial. */
+'use strict';
+(function (A) {
+  A.TIPOS_ENSER = {
+    hermandad: ['Túnica', 'Capirote', 'Cíngulo', 'Capa', 'Escapulario', 'Medalla', 'Insignia', 'Vara', 'Cirio', 'Ropa de acólito', 'Otro'],
+    club: ['Equipación', 'Chándal', 'Balón', 'Material de entrenamiento', 'Otro'],
+    otro: ['Material', 'Equipo', 'Libro', 'Otro'],
+  };
+  A.tiposEnser = function (db) { return A.TIPOS_ENSER[db.entidad.perfil] || A.TIPOS_ENSER.otro; };
+  A.ESTADOS_ENSER = { disponible: 'Disponible', prestado: 'Prestado', baja: 'De baja' };
+  A.ESTADOS_FIANZA = { ninguna: 'Sin fianza', pendiente: 'Pendiente de cobro', cobrada: 'En depósito', devuelta: 'Devuelta', retenida: 'Retenida' };
+  A.ESTADOS_DEVOLUCION = { bien: 'En buen estado', danado: 'Con daños', perdido: 'Perdido' };
+
+  /* Activado por defecto en hermandades y clubes (se puede ocultar); en el resto, si se activa en Configuración */
+  A.usaEnseres = function (db) { return A.vocab(db).enseres ? !db.ajustes.ocultarEnseres : !!db.ajustes.usarEnseres; };
+  A.enserPorId = function (db, id) { return db.enseres.find(function (e) { return e.id === id; }); };
+  A.prestamoActivo = function (db, enserId) { return db.prestamos.find(function (p) { return p.enserId === enserId && !p.fechaDevolucion; }); };
+
+  A.guardarEnser = function (db, d) {
+    if (!String(d.nombre || '').trim()) throw new Error('Escribe el nombre de la pieza.');
+    var cod = String(d.codigo || '').trim();
+    if (cod && db.enseres.some(function (e) { return e.id !== d.id && e.codigo === cod; })) throw new Error('Ya hay una pieza con el código ' + cod + '.');
+    var e = d.id ? A.enserPorId(db, d.id) : null;
+    if (!e) { e = { id: A.uid('e'), estado: 'disponible', alta: A.hoyISO() }; db.enseres.push(e); }
+    Object.assign(e, { nombre: d.nombre.trim(), tipo: d.tipo || 'Otro', codigo: cod, talla: d.talla || '', ubicacion: d.ubicacion || '',
+      fianzaCent: d.fianzaCent || 0, observaciones: d.observaciones || '' });
+    if (d.baja !== undefined && e.estado !== 'prestado') e.estado = d.baja ? 'baja' : 'disponible';
+    A.log(db, (d.id ? 'Modificada' : 'Alta de') + ' la pieza «' + e.nombre + (cod ? ' ' + cod : '') + '»');
+    return e;
+  };
+
+  /* Alta de varias piezas iguales numeradas: túnicas 1 a 20 de la talla M, por ejemplo */
+  A.altaLote = function (db, d) {
+    var n = Math.round(+d.cantidad || 0), desde = Math.round(+d.desde || 1);
+    if (!(n >= 1 && n <= 500)) throw new Error('Indica cuántas piezas (de 1 a 500).');
+    var pref = String(d.prefijo || '').trim(), creadas = [];
+    for (var i = 0; i < n; i++) {
+      var cod = pref + (desde + i);
+      if (db.enseres.some(function (e) { return e.codigo === cod; })) throw new Error('El código ' + cod + ' ya existe. Cambia el prefijo o el primer número.');
+    }
+    for (var j = 0; j < n; j++) {
+      var e = { id: A.uid('e'), estado: 'disponible', alta: A.hoyISO(), nombre: d.nombre || d.tipo, tipo: d.tipo || 'Otro', codigo: pref + (desde + j),
+        talla: d.talla || '', ubicacion: d.ubicacion || '', fianzaCent: d.fianzaCent || 0, observaciones: '' };
+      db.enseres.push(e); creadas.push(e);
+    }
+    A.log(db, 'Alta de ' + n + ' piezas «' + (d.nombre || d.tipo) + '» (' + pref + desde + ' a ' + pref + (desde + n - 1) + ')');
+    return creadas;
+  };
+
+  A.borrarEnser = function (db, id) {
+    if (db.prestamos.some(function (p) { return p.enserId === id; })) throw new Error('La pieza tiene préstamos registrados: dala de baja en lugar de borrarla.');
+    db.enseres = db.enseres.filter(function (e) { return e.id !== id; });
+  };
+
+  A.prestar = function (db, d) {
+    var e = A.enserPorId(db, d.enserId); if (!e) throw new Error('Elige la pieza.');
+    if (e.estado === 'baja') throw new Error('Esa pieza está de baja.');
+    if (A.prestamoActivo(db, e.id)) throw new Error('«' + e.nombre + ' ' + e.codigo + '» ya está prestada.');
+    var m = A.miembroPorId(db, d.miembroId); if (!m) throw new Error('Elige a quién se presta.');
+    var fianza = d.fianzaCent != null ? d.fianzaCent : e.fianzaCent || 0;
+    var p = { id: A.uid('p'), enserId: e.id, miembroId: m.id, fechaPrestamo: d.fecha || A.hoyISO(), fechaPrevista: d.fechaPrevista || '',
+      fechaDevolucion: '', estadoDevolucion: '', fianzaCent: fianza, fianzaEstado: !fianza ? 'ninguna' : d.fianzaCobrada === false ? 'pendiente' : 'cobrada',
+      formaPago: d.formaPago || 'efectivo', motivo: d.motivo || '', observaciones: d.observaciones || '',
+      historial: [{ fecha: new Date().toISOString(), texto: 'Préstamo' + (fianza ? ' con fianza de ' + A.euros(fianza) : '') }] };
+    db.prestamos.push(p); e.estado = 'prestado';
+    A.log(db, 'Préstamo de «' + e.nombre + ' ' + e.codigo + '» al nº ' + m.numero);
+    return p;
+  };
+
+  A.devolver = function (db, prestamoId, d) {
+    d = d || {};
+    var p = db.prestamos.find(function (x) { return x.id === prestamoId; }); if (!p || p.fechaDevolucion) throw new Error('El préstamo no está activo.');
+    var e = A.enserPorId(db, p.enserId);
+    p.fechaDevolucion = d.fecha || A.hoyISO(); p.estadoDevolucion = d.estado || 'bien';
+    if (p.fianzaEstado === 'cobrada') p.fianzaEstado = d.fianza === 'retenida' ? 'retenida' : 'devuelta';
+    if (d.observaciones) p.observaciones = (p.observaciones ? p.observaciones + ' · ' : '') + d.observaciones;
+    p.historial.push({ fecha: new Date().toISOString(), texto: 'Devolución: ' + A.ESTADOS_DEVOLUCION[p.estadoDevolucion].toLowerCase() +
+      (p.fianzaEstado === 'devuelta' ? ', fianza devuelta' : p.fianzaEstado === 'retenida' ? ', fianza retenida' : '') });
+    if (e) e.estado = p.estadoDevolucion === 'perdido' ? 'baja' : 'disponible';
+    A.log(db, 'Devolución de «' + (e ? e.nombre + ' ' + e.codigo : 'pieza') + '»');
+    return p;
+  };
+
+  A.cobrarFianza = function (db, prestamoId) {
+    var p = db.prestamos.find(function (x) { return x.id === prestamoId; });
+    if (!p || p.fianzaEstado !== 'pendiente') return;
+    p.fianzaEstado = 'cobrada'; p.historial.push({ fecha: new Date().toISOString(), texto: 'Fianza cobrada' });
+  };
+
+  A.prestamosActivos = function (db) {
+    var hoy = A.hoyISO();
+    return db.prestamos.filter(function (p) { return !p.fechaDevolucion; }).map(function (p) {
+      return { p: p, e: A.enserPorId(db, p.enserId), m: A.miembroPorId(db, p.miembroId), vencido: !!(p.fechaPrevista && p.fechaPrevista < hoy) };
+    }).sort(function (a, b) { return (a.p.fechaPrevista || '9') < (b.p.fechaPrevista || '9') ? -1 : 1; });
+  };
+  A.prestamosDe = function (db, miembroId) {
+    return db.prestamos.filter(function (p) { return p.miembroId === miembroId; }).map(function (p) { return { p: p, e: A.enserPorId(db, p.enserId) }; })
+      .sort(function (a, b) { return a.p.fechaPrestamo < b.p.fechaPrestamo ? 1 : -1; });
+  };
+  A.historialEnser = function (db, enserId) {
+    return db.prestamos.filter(function (p) { return p.enserId === enserId; }).map(function (p) { return { p: p, m: A.miembroPorId(db, p.miembroId) }; })
+      .sort(function (a, b) { return a.p.fechaPrestamo < b.p.fechaPrestamo ? 1 : -1; });
+  };
+
+  A.resumenEnseres = function (db) {
+    var r = { piezas: 0, disponibles: 0, prestadas: 0, baja: 0, vencidos: 0, fianzasCent: 0, porTipo: {} };
+    db.enseres.forEach(function (e) {
+      r.piezas++; r[e.estado === 'disponible' ? 'disponibles' : e.estado === 'prestado' ? 'prestadas' : 'baja']++;
+      var t = r.porTipo[e.tipo] = r.porTipo[e.tipo] || { total: 0, disponibles: 0, prestadas: 0, tallas: {} };
+      t.total++; if (e.estado === 'disponible') { t.disponibles++; if (e.talla) t.tallas[e.talla] = (t.tallas[e.talla] || 0) + 1; } if (e.estado === 'prestado') t.prestadas++;
+    });
+    A.prestamosActivos(db).forEach(function (x) { if (x.vencido) r.vencidos++; if (x.p.fianzaEstado === 'cobrada') r.fianzasCent += x.p.fianzaCent; });
+    return r;
+  };
+})(A);
+
+/* Alcancía · actividades con cobro (excursiones, campamentos, comidas, cursos…) y lotería de Navidad
+   Cada actividad tiene precios (socio, no socio, infantil…), plazas, inscripciones con pagos parciales,
+   y la lotería, talonarios entregados a cada responsable con su liquidación. */
+'use strict';
+(function (A) {
+  A.TIPOS_ACTIVIDAD = { excursion: 'Excursión o viaje', campamento: 'Campamento', comida: 'Comida o cena', curso: 'Curso o taller', evento: 'Evento o fiesta', loteria: 'Lotería', otra: 'Otra' };
+  A.ESTADOS_INSCRIPCION = { pendiente: 'Pendiente de pago', parcial: 'Pago parcial', pagada: 'Pagada', anulada: 'Anulada' };
+
+  A.actividadPorId = function (db, id) { return db.actividades.find(function (a) { return a.id === id; }); };
+  A.inscripcionPorId = function (db, id) { return db.inscripciones.find(function (x) { return x.id === id; }); };
+  A.inscripcionesDe = function (db, actividadId) { return db.inscripciones.filter(function (x) { return x.actividadId === actividadId; }); };
+  A.ordenarActividades = function (db) { db.actividades.sort(function (a, b) { return (b.fecha || '') < (a.fecha || '') ? -1 : 1; }); };
+
+  A.guardarActividad = function (db, d) {
+    if (!String(d.nombre || '').trim()) throw new Error('Escribe el nombre de la actividad.');
+    var a = d.id ? A.actividadPorId(db, d.id) : null;
+    if (!a) { a = { id: A.uid('a'), estado: 'abierta', precios: [], creada: A.hoyISO() }; db.actividades.push(a); }
+    Object.assign(a, { nombre: d.nombre.trim(), tipo: d.tipo || 'otra', fecha: d.fecha || '', fechaFin: d.fechaFin || '', lugar: d.lugar || '',
+      plazas: Math.max(0, Math.round(+d.plazas || 0)), observaciones: d.observaciones || '' });
+    if (a.tipo === 'loteria') Object.assign(a, { numeros: d.numeros || '', precioCent: d.precioCent || 0, donativoCent: d.donativoCent || 0, porTalonario: Math.max(1, Math.round(+d.porTalonario || 50)) });
+    if (Array.isArray(d.precios)) a.precios = d.precios;
+    if (a.tipo !== 'loteria' && !a.precios.length) a.precios = [{ id: A.uid('p'), nombre: 'General', importeCent: 0 }];
+    A.ordenarActividades(db);
+    A.log(db, (d.id ? 'Modificada' : 'Creada') + ' la actividad «' + a.nombre + '»');
+    return a;
+  };
+  A.borrarActividad = function (db, id) {
+    if (db.inscripciones.some(function (x) { return x.actividadId === id; }) || db.talonarios.some(function (t) { return t.actividadId === id; }))
+      throw new Error('La actividad tiene inscripciones o talonarios: ciérrala en lugar de borrarla.');
+    db.actividades = db.actividades.filter(function (a) { return a.id !== id; });
+  };
+  A.cerrarActividad = function (db, id, cerrar) {
+    var a = A.actividadPorId(db, id); if (!a) return;
+    a.estado = cerrar ? 'cerrada' : 'abierta';
+    A.log(db, (cerrar ? 'Cerrada' : 'Reabierta') + ' la actividad «' + a.nombre + '»');
+  };
+
+  /* ---------- inscripciones ---------- */
+  function estadoInscripcion(x) {
+    if (x.estado === 'anulada') return 'anulada';
+    var pagado = (x.pagos || []).reduce(function (s, p) { return s + p.importeCent; }, 0);
+    x.pagadoCent = pagado;
+    return pagado >= x.importeCent ? 'pagada' : pagado > 0 ? 'parcial' : 'pendiente';
+  }
+  A.plazasLibres = function (db, a) {
+    if (!a.plazas) return Infinity;
+    return a.plazas - A.inscripcionesDe(db, a.id).filter(function (x) { return x.estado !== 'anulada'; }).length;
+  };
+
+  A.avisosInscripcion = function (db, d) {
+    var a = A.actividadPorId(db, d.actividadId), av = [];
+    if (!a) return av;
+    if (A.plazasLibres(db, a) <= 0) av.push('No quedan plazas (' + a.plazas + ').');
+    if (d.miembroId && A.inscripcionesDe(db, a.id).some(function (x) { return x.miembroId === d.miembroId && x.estado !== 'anulada' && (x.detalle || '') === (d.detalle || ''); }))
+      av.push('Ya está inscrito' + (d.detalle ? ' con ese mismo detalle' : '') + '.');
+    if (d.miembroId) {
+      var deuda = (A.indice(db).cargosDe.get(d.miembroId) || []).filter(function (c) { return c.estado === 'pendiente' || c.estado === 'devuelto'; });
+      if (deuda.length) av.push('Tiene ' + deuda.length + ' cuota(s) pendiente(s).');
+    }
+    return av;
+  };
+
+  A.inscribir = function (db, d) {
+    var a = A.actividadPorId(db, d.actividadId); if (!a) throw new Error('Actividad no encontrada.');
+    if (a.estado === 'cerrada') throw new Error('La actividad está cerrada.');
+    var m = d.miembroId ? A.miembroPorId(db, d.miembroId) : null;
+    if (!m && !String(d.nombre || '').trim()) throw new Error('Elige a quién inscribes o escribe su nombre.');
+    var pr = a.precios.find(function (p) { return p.id === d.precioId; }) || a.precios[0];
+    var importe = d.importeCent != null ? d.importeCent : (pr ? pr.importeCent : 0);
+    var x = { id: A.uid('i'), actividadId: a.id, miembroId: m ? m.id : '', nombre: m ? '' : d.nombre.trim(), telefono: m ? '' : (d.telefono || ''),
+      detalle: d.detalle || '', precioId: pr ? pr.id : '', precioNombre: pr ? pr.nombre : '', importeCent: importe, pagos: [], estado: 'pendiente',
+      fecha: d.fecha || A.hoyISO(), observaciones: d.observaciones || '', historial: [{ fecha: new Date().toISOString(), texto: 'Inscripción (' + A.euros(importe) + ')' }] };
+    db.inscripciones.push(x);
+    if (d.pagoCent > 0) A.pagarInscripcion(db, x.id, { importeCent: d.pagoCent, formaPago: d.formaPago, fecha: d.fecha });
+    x.estado = estadoInscripcion(x);
+    A.log(db, 'Inscripción en «' + a.nombre + '»' + (m ? ' del nº ' + m.numero : ''));
+    return x;
+  };
+
+  A.pagarInscripcion = function (db, id, d) {
+    var x = A.inscripcionPorId(db, id); if (!x || x.estado === 'anulada') throw new Error('Inscripción no válida.');
+    var pend = x.importeCent - (x.pagadoCent || 0), imp = d.importeCent != null ? d.importeCent : pend;
+    if (!(imp > 0)) throw new Error('El importe no es válido.');
+    x.pagos.push({ fecha: d.fecha || A.hoyISO(), importeCent: imp, formaPago: d.formaPago || 'efectivo' });
+    x.historial.push({ fecha: new Date().toISOString(), texto: 'Pago de ' + A.euros(imp) + ' (' + (A.FORMAS_COBRO[d.formaPago] || d.formaPago || 'efectivo') + ')' });
+    x.estado = estadoInscripcion(x);
+    return x;
+  };
+  A.anularInscripcion = function (db, id, motivo) {
+    var x = A.inscripcionPorId(db, id); if (!x) return;
+    x.estado = 'anulada'; x.historial.push({ fecha: new Date().toISOString(), texto: 'Anulada' + (motivo ? ': ' + motivo : '') });
+  };
+  A.reabrirInscripcion = function (db, id) {
+    var x = A.inscripcionPorId(db, id); if (!x || x.estado !== 'anulada') return;
+    x.estado = 'pendiente'; x.estado = estadoInscripcion(x); x.historial.push({ fecha: new Date().toISOString(), texto: 'Reactivada' });
+  };
+
+  A.nombreInscrito = function (db, x) {
+    var m = x.miembroId ? A.miembroPorId(db, x.miembroId) : null;
+    return m ? A.nombreOrden(m) : x.miembroId === 'suprimido' ? 'Datos suprimidos' : (x.nombre || '') + ' (no ' + A.vocab(db).miembro + ')';
+  };
+
+  A.listadoInscripciones = function (db, actividadId, op) {
+    op = op || {};
+    return A.inscripcionesDe(db, actividadId).filter(function (x) {
+      if (op.estado === 'vigentes') return x.estado !== 'anulada';
+      if (op.estado === 'debe') return x.estado === 'pendiente' || x.estado === 'parcial';
+      return !op.estado || x.estado === op.estado;
+    }).map(function (x) { return { x: x, m: x.miembroId ? A.miembroPorId(db, x.miembroId) : null }; })
+      .sort(function (a, b) { return A.comparaTexto(A.nombreInscrito(db, a.x), A.nombreInscrito(db, b.x)); });
+  };
+
+  A.resumenActividad = function (db, actividadId) {
+    var a = A.actividadPorId(db, actividadId), r = { inscritos: 0, pagadas: 0, deben: 0, totalCent: 0, cobradoCent: 0, pendienteCent: 0, porPrecio: {} };
+    A.inscripcionesDe(db, actividadId).forEach(function (x) {
+      if (x.estado === 'anulada') return;
+      estadoInscripcion(x);
+      r.inscritos++; if (x.estado === 'pagada') r.pagadas++; else r.deben++;
+      r.totalCent += x.importeCent; r.cobradoCent += x.pagadoCent || 0;
+      var k = x.precioNombre || 'General'; r.porPrecio[k] = (r.porPrecio[k] || 0) + 1;
+    });
+    r.pendienteCent = r.totalCent - r.cobradoCent;
+    r.libres = a && a.plazas ? a.plazas - r.inscritos : null;
+    return r;
+  };
+
+  /* ---------- lotería: talonarios ---------- */
+  A.talonariosDe = function (db, actividadId) { return db.talonarios.filter(function (t) { return t.actividadId === actividadId; }); };
+  A.entregarTalonario = function (db, d) {
+    var a = A.actividadPorId(db, d.actividadId); if (!a || a.tipo !== 'loteria') throw new Error('Elige una actividad de lotería.');
+    var m = A.miembroPorId(db, d.miembroId); if (!m) throw new Error('Elige a quién se entrega el talonario.');
+    var n = Math.round(+d.participaciones || a.porTalonario);
+    if (!(n > 0)) throw new Error('Indica el número de participaciones.');
+    var num = String(d.numero || '').trim() || String(A.talonariosDe(db, a.id).length + 1);
+    if (A.talonariosDe(db, a.id).some(function (t) { return t.numero === num; })) throw new Error('Ya se entregó el talonario ' + num + '.');
+    var t = { id: A.uid('l'), actividadId: a.id, numero: num, participaciones: n, miembroId: m.id, fechaEntrega: d.fecha || A.hoyISO(),
+      vendidas: 0, devueltas: 0, liquidadoCent: 0, fechaLiquidacion: '', estado: 'entregado' };
+    db.talonarios.push(t);
+    A.log(db, 'Talonario ' + num + ' de «' + a.nombre + '» entregado al nº ' + m.numero);
+    return t;
+  };
+  A.liquidarTalonario = function (db, id, d) {
+    var t = db.talonarios.find(function (x) { return x.id === id; }); if (!t) throw new Error('Talonario no encontrado.');
+    var a = A.actividadPorId(db, t.actividadId), v = Math.round(+d.vendidas), dv = Math.round(+d.devueltas);
+    if (!(v >= 0 && dv >= 0) || v + dv !== t.participaciones) throw new Error('Vendidas y devueltas deben sumar ' + t.participaciones + '.');
+    Object.assign(t, { vendidas: v, devueltas: dv, liquidadoCent: v * a.precioCent, fechaLiquidacion: d.fecha || A.hoyISO(), formaPago: d.formaPago || 'efectivo', estado: 'liquidado' });
+    A.log(db, 'Liquidado el talonario ' + t.numero + ': ' + v + ' vendidas, ' + A.euros(t.liquidadoCent));
+    return t;
+  };
+  A.reabrirTalonario = function (db, id) {
+    var t = db.talonarios.find(function (x) { return x.id === id; }); if (!t) return;
+    Object.assign(t, { vendidas: 0, devueltas: 0, liquidadoCent: 0, fechaLiquidacion: '', estado: 'entregado' });
+  };
+  A.borrarTalonario = function (db, id) {
+    var t = db.talonarios.find(function (x) { return x.id === id; });
+    if (t && t.estado === 'liquidado') throw new Error('El talonario ya está liquidado.');
+    db.talonarios = db.talonarios.filter(function (x) { return x.id !== id; });
+  };
+  A.resumenLoteria = function (db, actividadId) {
+    var a = A.actividadPorId(db, actividadId), r = { talonarios: 0, entregadas: 0, pendientesLiquidar: 0, vendidas: 0, devueltas: 0, recaudadoCent: 0, pendienteCent: 0, donativoCent: 0, juegaCent: 0 };
+    A.talonariosDe(db, actividadId).forEach(function (t) {
+      r.talonarios++; r.entregadas += t.participaciones;
+      if (t.estado === 'liquidado') { r.vendidas += t.vendidas; r.devueltas += t.devueltas; r.recaudadoCent += t.liquidadoCent; }
+      else { r.pendientesLiquidar++; r.pendienteCent += t.participaciones * a.precioCent; }
+    });
+    r.donativoCent = r.vendidas * (a.donativoCent || 0);            // lo que queda para la entidad
+    r.juegaCent = r.vendidas * ((a.precioCent || 0) - (a.donativoCent || 0)); // lo que se juega
+    return r;
+  };
+
+  /* Para la ficha y el derecho de acceso */
+  A.actividadesDe = function (db, miembroId) {
+    var r = db.inscripciones.filter(function (x) { return x.miembroId === miembroId; }).map(function (x) {
+      var a = A.actividadPorId(db, x.actividadId) || {};
+      estadoInscripcion(x);
+      return { tipo: 'inscripcion', actividad: a.nombre || '', fecha: a.fecha || x.fecha, detalle: x.detalle, importeCent: x.importeCent, pagadoCent: x.pagadoCent || 0, estado: x.estado };
+    });
+    db.talonarios.filter(function (t) { return t.miembroId === miembroId; }).forEach(function (t) {
+      var a = A.actividadPorId(db, t.actividadId) || {};
+      r.push({ tipo: 'talonario', actividad: a.nombre || '', fecha: t.fechaEntrega, detalle: 'Talonario ' + t.numero + ' (' + t.participaciones + ' participaciones)',
+        importeCent: t.liquidadoCent, pagadoCent: t.liquidadoCent, estado: t.estado === 'liquidado' ? 'liquidado' : 'entregado' });
+    });
+    return r.sort(function (a, b) { return (a.fecha || '') < (b.fecha || '') ? 1 : -1; });
+  };
+})(A);
+
 /* Alcancía · utilidades de interfaz: iconos, modales, avisos, navegación e impresión */
 'use strict';
 (function (A) {
@@ -1496,6 +1988,9 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     ok: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     vela: '<path d="M12 2.5c1.6 2 1.6 3.6 0 5-1.6-1.4-1.6-3 0-5Z"/><rect x="9" y="9" width="6" height="10" rx="1"/><path d="M6 21h12"/>',
+    calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>',
+    percha: '<path d="M12 7a2 2 0 1 1 2-2c0 1.2-2 1.5-2 3v1"/><path d="M12 9 3 16.5a1.3 1.3 0 0 0 .8 2.3h16.4a1.3 1.3 0 0 0 .8-2.3L12 9Z"/>',
+    corazon: '<path d="M12 20s-7.5-4.6-9-9.3C1.9 7.2 4.3 4 7.5 4c1.9 0 3.4 1 4.5 2.6C13.1 5 14.6 4 16.5 4c3.2 0 5.6 3.2 4.5 6.7-1.5 4.7-9 9.3-9 9.3Z"/>',
     historial: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
   };
   A.icono = function (n, t) {
@@ -1580,6 +2075,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       (op.ayuda ? '<div class="ayuda">' + op.ayuda + '</div>' : '') + '<div class="error-campo" aria-live="polite"></div></div>';
   };
 
+  A.kpi = function (valor, etiqueta) { return '<div class="kpi"><div class="valor">' + A.esc(valor) + '</div><div class="etiqueta">' + A.esc(etiqueta) + '</div></div>'; };
   A.etiquetaEstado = function (texto, tipo) { return '<span class="etiqueta-estado e-' + (tipo || 'neutro') + '">' + A.esc(texto) + '</span>'; };
 
   /* Navegación por hash: #/ruta?param=valor */
@@ -1769,6 +2265,66 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       } }] }).then(function () { A.toast('Contraseña cambiada. Ya podéis entrar con ella.'); });
   };
 
+  /* Actividades, lotería, enseres y donativos de ejemplo según el perfil */
+  function ejemploActividades(db, rnd, elige) {
+    var perfil = db.entidad.perfil, anio = +A.hoyISO().slice(0, 4), v = A.vocab(db);
+    var alta = A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero');
+    var fecha = function (dias) { var d = new Date(); d.setDate(d.getDate() + dias); return A.fechaISO(d); };
+    // lotería de Navidad (todas menos el club)
+    if (perfil !== 'club') {
+      var lot = A.guardarActividad(db, { nombre: 'Lotería de Navidad ' + anio, tipo: 'loteria', fecha: anio + '-12-22', numeros: '27315', precioCent: 500, donativoCent: 100, porTalonario: 50 });
+      for (var t = 0; t < 8; t++) {
+        var tal = A.entregarTalonario(db, { actividadId: lot.id, miembroId: alta[(t * 5) % alta.length].id, numero: String(t + 1), fecha: fecha(-40 + t * 3) });
+        if (t < 5) { var vend = 30 + Math.floor(rnd() * 21); A.liquidarTalonario(db, tal.id, { vendidas: vend, devueltas: 50 - vend, fecha: fecha(-10 + t) }); }
+      }
+    }
+    var defs = {
+      hermandad: { nombre: 'Comida de hermandad', tipo: 'comida', dias: 25, lugar: 'Salón parroquial', plazas: 80, precios: [['Hermano/a', 2500], ['Invitado', 3000], ['Niño/a', 1200]], n: 22, detalle: ['', '', 'Menú sin gluten', 'Con su pareja'] },
+      ampa: { nombre: 'Excursión a la granja escuela', tipo: 'excursion', dias: 30, lugar: 'Granja escuela El Molino', plazas: 50, precios: [['Socio', 1500], ['No socio', 2500]], n: 26, detalle: ['Lucas (3.º Primaria)', 'Vera (1.º Infantil)', 'Noa (5.º Primaria)', 'Iker (2.º Primaria)'] },
+      club: { nombre: 'Campus de verano', tipo: 'campamento', dias: 60, lugar: 'Polideportivo municipal', plazas: 40, precios: [['Deportista del club', 18000], ['Externo', 22000]], n: 24, detalle: ['Talla S', 'Talla M', 'Talla L', 'Talla XL'] },
+      asociacion: { nombre: 'Viaje cultural a Córdoba', tipo: 'excursion', dias: 20, lugar: 'Córdoba', plazas: 45, precios: [['Socio', 3500], ['Acompañante', 4500]], n: 18, detalle: ['', '', 'Con acompañante', ''] },
+    }[perfil];
+    var act = A.guardarActividad(db, { nombre: defs.nombre, tipo: defs.tipo, fecha: fecha(defs.dias), fechaFin: defs.tipo === 'campamento' ? fecha(defs.dias + 11) : '', lugar: defs.lugar, plazas: defs.plazas,
+      precios: defs.precios.map(function (p, i) { return { id: 'pr' + i, nombre: p[0], importeCent: p[1] }; }) });
+    for (var i = 0; i < defs.n; i++) {
+      var ext = i % 7 === 6, pr = act.precios[ext ? 1 : (i % 9 === 4 && act.precios[2] ? 2 : 0)];
+      var pago = i % 4 === 0 ? 0 : i % 4 === 1 && defs.tipo === 'campamento' ? Math.round(pr.importeCent / 2) : pr.importeCent;
+      A.inscribir(db, { actividadId: act.id, miembroId: ext ? '' : alta[(i * 3 + 1) % alta.length].id, nombre: ext ? elige(['Ana Ruiz', 'Pedro Gil', 'Lola Vega', 'Marcos Sáez']) : '',
+        telefono: ext ? '6' + String(Math.floor(rnd() * 1e8)).padStart(8, '0') : '', detalle: elige(defs.detalle), precioId: pr.id, pagoCent: pago, formaPago: elige(['efectivo', 'bizum', 'transferencia']), fecha: fecha(-15 + i % 10) });
+    }
+    // enseres y material prestado
+    if (A.usaEnseres(db)) {
+      var piezas = perfil === 'hermandad'
+        ? A.altaLote(db, { tipo: 'Túnica', nombre: 'Túnica de nazareno', talla: 'M', cantidad: 20, prefijo: 'T-', desde: 1, fianzaCent: 2000, ubicacion: 'Almacén, armario 1' })
+          .concat(A.altaLote(db, { tipo: 'Túnica', nombre: 'Túnica de nazareno', talla: 'L', cantidad: 12, prefijo: 'T-', desde: 21, fianzaCent: 2000, ubicacion: 'Almacén, armario 1' }))
+          .concat(A.altaLote(db, { tipo: 'Capirote', nombre: 'Capirote', cantidad: 25, prefijo: 'C-', desde: 1, ubicacion: 'Almacén, armario 2' }))
+          .concat(A.altaLote(db, { tipo: 'Vara', nombre: 'Vara de acompañamiento', cantidad: 6, prefijo: 'V-', desde: 1, fianzaCent: 5000, ubicacion: 'Sala de juntas' }))
+        : A.altaLote(db, { tipo: 'Equipación', nombre: 'Equipación de juego', talla: 'M', cantidad: 18, prefijo: 'E-', desde: 1, fianzaCent: 1500, ubicacion: 'Vestuario' })
+          .concat(A.altaLote(db, { tipo: 'Chándal', nombre: 'Chándal de paseo', talla: 'L', cantidad: 10, prefijo: 'CH-', desde: 1, ubicacion: 'Vestuario' }));
+      for (var j = 0; j < 14; j++) {
+        A.prestar(db, { enserId: piezas[j * 2].id, miembroId: alta[(j * 4 + 2) % alta.length].id, fecha: fecha(-60 + j), fechaPrevista: fecha(j % 5 === 0 ? -5 : 30 + j),
+          motivo: perfil === 'hermandad' ? 'Estación de penitencia' : 'Temporada', fianzaCobrada: j % 6 !== 5 });
+      }
+      var dev = A.prestar(db, { enserId: piezas[1].id, miembroId: alta[1].id, fecha: fecha(-200), fechaPrevista: fecha(-150) });
+      A.devolver(db, dev.id, { fecha: fecha(-160), estado: 'bien' });
+    }
+    // donativos: la hermandad está acogida a la Ley 49/2002 (entidad de la Iglesia)
+    if (perfil === 'hermandad') {
+      Object.assign(db.fiscal, { acogida: true, naturaleza: '1', contacto: 'Secretaría de la hermandad', telefono: '958000000' });
+      db.tiposCuota.forEach(function (t) { t.deducible = true; });
+      var anioDecl = +A.hoyISO().slice(5, 7) >= 10 ? anio : anio - 1;
+      alta.forEach(function (m, k) {
+        if (!m.documento) return;
+        [anioDecl - 2, anioDecl - 1, anioDecl].forEach(function (y, n) {
+          if (k % 5 === 4 && n === 0) return;                 // algunos no donaron hace dos años
+          db.cargos.push({ id: A.uid('c'), miembroId: m.id, tipoCuotaId: m.tipoCuotaId, periodo: String(y), concepto: 'Cuota anual ' + y,
+            importeCent: m.tipoCuotaId === 't-red' ? 3200 : 6000, estado: 'pagado', formaPago: m.formaPago, fechaPago: y + '-0' + (2 + k % 7) + '-15', remesaId: '', creado: y + '-01-10T10:00:00Z' });
+        });
+        if (k % 8 === 0) A.registrarDonativo(db, { miembroId: m.id, importeCent: 10000 + 5000 * (k % 3), fecha: anioDecl + '-03-20', concepto: 'Donativo para la restauración del paso', formaPago: 'transferencia' });
+      });
+    }
+  }
+
   /* Hermandad de ejemplo: cofrades asociados con historial y dos salidas con tarjetas de sitio */
   function ejemploCofradia(db, rnd, elige) {
     db.ajustes.condicionCofrade = true;
@@ -1837,6 +2393,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       if (A.edad(nac) < 18) m.tutor = elige(nom) + ' ' + a1 + ' ' + elige(ape);
       if (i % 11 === 10) { m.estado = 'baja'; m.fechaBaja = (anioActual - 1) + '-06-30'; }
       if (i === 5) m.iban = 'ES0012345678901234567890'; // IBAN erróneo para mostrar avisos
+      if (A.edad(nac) >= 14 && i % 9 !== 3) { var dni = 10000000 + Math.floor(rnd() * 89999999); m.documento = dni + 'TRWAGMYFPDXBNJZSQVHLCKE'[dni % 23]; }
       A.guardaMiembro(db, m);
     }
     if (db.entidad.perfil === 'hermandad') A.renumerarPorAntiguedad(db);
@@ -1845,6 +2402,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     A.generarCargos(db, 't-ord', p1); A.generarCargos(db, 't-red', p1);
     db.cargos.forEach(function (c, i) { if (c.formaPago !== 'domiciliacion' && i % 3 === 0) A.marcarPagado(db, c.id, c.formaPago); });
     if (db.entidad.perfil === 'hermandad') ejemploCofradia(db, rnd, elige);
+    ejemploActividades(db, rnd, elige);
     db.ultimaCopia = null;
     A.log(db, 'Cargados datos de ejemplo (inventados)');
   };
@@ -1869,6 +2427,12 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var rs = A.resumenSalida(db, salidaAbierta.id);
       if (rs.pendientes) avisos.push(['info', rs.pendientes + ' tarjetas de sitio de «' + salidaAbierta.nombre + '» están pendientes de pago.', '#/salidas?id=' + salidaAbierta.id, 'Ver']);
     }
+    if (A.usaEnseres(db)) { var venc = A.prestamosActivos(db).filter(function (x) { return x.vencido; }).length;
+      if (venc) avisos.push(['atencion', venc + ' préstamos de ' + A.nombreEnseres(db).toLowerCase() + ' han pasado la fecha de devolución.', '#/enseres?pestana=prestamos', 'Ver']); }
+    var mes = +A.hoyISO().slice(5, 7);
+    if (A.usaDonativos(db) && (mes === 1 || mes === 12)) avisos.push(['info', 'En enero se presenta el modelo 182 con los donativos de ' + (mes === 1 ? +A.hoyISO().slice(0, 4) - 1 : A.hoyISO().slice(0, 4)) + ' y se entregan los certificados.', '#/donativos', 'Preparar']);
+    var actPend = db.actividades.filter(function (a) { return a.estado === 'abierta' && a.tipo !== 'loteria'; }).map(function (a) { return [a, A.resumenActividad(db, a.id)]; }).filter(function (x) { return x[1].deben; })[0];
+    if (actPend) avisos.push(['info', actPend[1].deben + ' inscritos en «' + actPend[0].nombre + '» tienen pagos pendientes.', '#/actividades?id=' + actPend[0].id, 'Ver']);
     var viejas = A.bajasParaSuprimir(db).length;
     if (viejas) avisos.push(['atencion', viejas + ' bajas superan el plazo de conservación de datos.', '#/rgpd', 'Revisar']);
 
@@ -1998,6 +2562,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         cargos.map(function (x) { return '<tr><td>' + A.esc(x.periodo) + '</td><td>' + A.esc(x.concepto) + '</td><td class="num">' + A.euros(x.importeCent) + '</td><td>' + estadoCargo(x) + '</td></tr>'; }).join('') +
         '</tbody></table></div>' : '<p class="gris">Sin cuotas generadas.</p>') + '</fieldset>' : '') +
       (id && v.salidas ? tarjetasHTML(db, id) : '') +
+      (id ? prestamosHTML(db, id) + actividadesHTML(db, id) : '') +
       '<div id="revision" aria-live="polite"></div></form>';
 
     var botones = [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (raiz) {
@@ -2057,6 +2622,27 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       '</tbody></table></div></details>';
   }
 
+  function prestamosHTML(db, id) {
+    var h = A.prestamosDe(db, id);
+    if (!h.length && !A.usaEnseres(db)) return '';
+    return '<fieldset><legend>' + A.nombreEnseres(db) + ' prestado</legend>' + (h.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Pieza</th><th>Prestada</th><th>Devolución</th><th>Fianza</th></tr></thead><tbody>' +
+      h.map(function (x) {
+        var p = x.p, venc = !p.fechaDevolucion && p.fechaPrevista && p.fechaPrevista < A.hoyISO();
+        return '<tr><td>' + (x.e ? A.esc(x.e.nombre) + (x.e.codigo ? ' <span class="mono">' + A.esc(x.e.codigo) + '</span>' : '') : '') + '</td><td>' + A.fechaES(p.fechaPrestamo) + '</td><td>' +
+          (p.fechaDevolucion ? A.fechaES(p.fechaDevolucion) : A.etiquetaEstado(venc ? 'Fuera de plazo' : 'Pendiente' + (p.fechaPrevista ? ' · antes del ' + A.fechaES(p.fechaPrevista) : ''), venc ? 'error' : 'aviso')) +
+          '</td><td>' + (p.fianzaCent ? A.euros(p.fianzaCent) + ' <span class="gris">' + A.ESTADOS_FIANZA[p.fianzaEstado].toLowerCase() + '</span>' : '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<p class="gris">No tiene nada prestado.</p>') + '</fieldset>';
+  }
+  function actividadesHTML(db, id) {
+    var h = A.actividadesDe(db, id);
+    if (!h.length) return '';
+    return '<fieldset><legend>Actividades</legend><div class="tabla-envoltorio"><table><thead><tr><th>Actividad</th><th>Detalle</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>' +
+      h.map(function (x) {
+        var est = x.tipo === 'talonario' ? A.etiquetaEstado(x.estado === 'liquidado' ? 'Liquidado' : 'Por liquidar', x.estado === 'liquidado' ? 'ok' : 'aviso') : A.etiquetaInscripcion({ estado: x.estado, pagadoCent: x.pagadoCent });
+        return '<tr><td>' + A.esc(x.actividad) + ' <span class="gris">' + A.fechaES(x.fecha) + '</span></td><td>' + A.esc(x.detalle || '') + '</td><td class="num">' + A.euros(x.importeCent) + '</td><td>' + est + '</td></tr>';
+      }).join('') + '</tbody></table></div></fieldset>';
+  }
+
   function tarjetasHTML(db, id) {
     var h = A.historialTarjetas(db, id);
     return '<fieldset><legend>Tarjetas de sitio</legend>' + (h.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Salida</th><th>Tipo</th><th>Puesto</th><th class="num">Importe</th><th>Estado</th></tr></thead><tbody>' +
@@ -2073,12 +2659,17 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.estadoCargo = estadoCargo;
 
   A.accionesMiembro = function (m) {
-    var db = A.S.db, v = A.vocab(db);
+    var db = A.S.db, v = A.vocab(db), abiertas = db.actividades.filter(function (a) { return a.estado === 'abierta' && a.tipo !== 'loteria'; });
     A.modal({ titulo: 'Acciones · ' + A.nombreCompleto(m), html:
       '<p><strong>Exportar sus datos</strong>: entrega a la persona una copia de sus datos (derecho de acceso y portabilidad).</p>' +
       '<p><strong>Suprimir sus datos</strong>: elimina sus datos personales de forma definitiva. Los importes de sus cuotas se conservan sin identificarle, por obligaciones contables. Úsalo cuando lo pida o cuando termine el plazo de conservación tras la baja.</p>',
-      botones: [{ texto: 'Cerrar', valor: false }, { texto: 'Exportar sus datos', valor: 'exportar' }, { texto: 'Suprimir sus datos', valor: 'suprimir', clase: 'peligro' }] })
+      botones: [{ texto: 'Cerrar', valor: false }].concat(
+        A.usaEnseres(db) && m.estado === 'alta' ? [{ texto: 'Prestar ' + (db.entidad.perfil === 'hermandad' ? 'un enser' : 'material'), valor: 'prestar', izq: true }] : [],
+        abiertas.length && m.estado === 'alta' ? [{ texto: 'Inscribir en actividad', valor: 'inscribir', izq: true }] : [],
+        [{ texto: 'Exportar sus datos', valor: 'exportar' }, { texto: 'Suprimir sus datos', valor: 'suprimir', clase: 'peligro' }]) })
       .then(async function (r) {
+        if (r === 'prestar') return A.dialogoPrestar(db, { miembroId: m.id });
+        if (r === 'inscribir') return A.ir('actividades?id=' + abiertas[0].id + '&inscribir=' + m.id);
         if (r === 'exportar') {
           A.descargar('datos-' + A.nombreFichero(A.nombreCompleto(m)) + '.json', JSON.stringify(A.datosDeMiembro(db, m.id), null, 2), 'application/json');
           A.log(db, 'Exportación de datos del nº ' + m.numero + ' (derecho de acceso)'); A.guardar();
@@ -2175,12 +2766,15 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       A.campo('importe', 'Importe por periodo (€)', t.importeCent ? A.decimalPunto(t.importeCent).replace('.', ',') : '', { requerido: true, attrs: ' inputmode="decimal"' }) +
       A.campo('periodicidad', 'Periodicidad', t.periodicidad, { opciones: Object.keys(A.PERIODICIDADES).map(function (k) { return [k, A.PERIODICIDADES[k]]; }) }) +
       A.campo('activa', 'Activa', t.activa, { tipo: 'checkbox' }) +
+      (A.usaDonativos(db) ? A.campo('deducible', 'Cuenta como donativo deducible (certificados y modelo 182)', !!t.deducible, { tipo: 'checkbox',
+        ayuda: 'Márcalo en las cuotas de afiliación que no dan derecho a nada a cambio. No lo marques en cuotas que pagan un servicio (comedor, actividades…).' }) : '') +
       (id ? '<p class="gris">Cambiar el importe no modifica las cuotas ya generadas.</p>' : '') + '</form>',
       botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (raiz) {
         var f = A.leerForm(A.$('#f-tipo', raiz)), imp = A.aCentimos(f.importe);
         if (!f.nombre) throw new Error('Escribe el nombre.');
         if (!(imp > 0)) throw new Error('El importe no es válido.');
         Object.assign(t, { nombre: f.nombre, importeCent: imp, periodicidad: f.periodicidad, activa: f.activa });
+        if (A.usaDonativos(db)) t.deducible = !!f.deducible;
         if (!id) db.tiposCuota.push(t);
         A.log(db, (id ? 'Modificado' : 'Creado') + ' el tipo de cuota «' + t.nombre + '»'); A.guardar();
       } }] }).then(function (r) { if (r) A.pintar(); });
@@ -2483,7 +3077,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         'Finalidad: gestionar tu condición de ' + v.miembro + ', el cobro de las cuotas, la organización de las actividades y, si lo autorizas, enviarte comunicaciones y publicar imágenes de las actividades.\n\n' +
         'Legitimación: la relación de pertenencia a ' + v.entidad + ' (art. 6.1.b RGPD) y tu consentimiento para comunicaciones e imágenes (art. 6.1.a), que puedes retirar en cualquier momento.' +
         (e.perfil === 'hermandad' ? ' La pertenencia a la hermandad puede revelar convicciones religiosas: se trata en el ámbito de las actividades legítimas de la entidad (art. 9.2.d RGPD) y no se comunica fuera de ella sin tu consentimiento.' : '') + '\n\n' +
-        'Destinatarios: la entidad bancaria para el cobro de las cuotas domiciliadas y las administraciones públicas cuando lo exija la ley. No se ceden datos a terceros con fines comerciales.\n\n' +
+        'Destinatarios: la entidad bancaria para el cobro de las cuotas domiciliadas' + (A.usaDonativos(db) ? ', la Agencia Tributaria (declaración anual de donativos, modelo 182, para que puedas deducirlos)' : '') + ' y las administraciones públicas cuando lo exija la ley. No se ceden datos a terceros con fines comerciales.\n\n' +
         'Conservación: mientras seas ' + v.miembro + ' y, tras la baja, durante ' + db.ajustes.conservarBajasAnios + ' años para atender posibles responsabilidades; después se suprimen.\n\n' +
         'Derechos: puedes acceder, rectificar y suprimir tus datos, oponerte, limitar el tratamiento y solicitar la portabilidad escribiendo a ' + (e.email || '[email]') + '. Si consideras que no se han atendido, puedes reclamar ante la Agencia Española de Protección de Datos (www.aepd.es).\n\n' +
         'Si eres menor de 14 años, estos datos y consentimientos los facilita tu madre, padre o persona tutora.',
@@ -2495,7 +3089,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         '· Categorías de interesados: ' + v.miembros + ', personas tutoras de menores y titulares de cuentas de cargo.\n' +
         '· Categorías de datos: identificativos (nombre, DNI/NIE), contacto, fecha de nacimiento, datos bancarios (IBAN y mandato SEPA), datos de pertenencia y cuotas, consentimientos.' +
         (e.perfil === 'hermandad' ? ' Participación en salidas (tarjetas de sitio, puesto e importe)' + (A.usaCondicion(db) ? ' y condición de cofrade activo o asociado con su historial' : '') + '. La pertenencia puede revelar convicciones religiosas (categoría especial, art. 9.2.d).' : '') + '\n' +
-        '· Destinatarios: entidad bancaria (remesas SEPA); administraciones públicas cuando lo exija la ley.\n' +
+        (A.usaEnseres(db) ? '· También: préstamos de material (pieza, fechas y fianza).\n' : '') + (db.actividades.length ? '· También: inscripciones en actividades y su pago, y entrega y liquidación de talonarios de lotería.\n' : '') +
+        '· Destinatarios: entidad bancaria (remesas SEPA); ' + (A.usaDonativos(db) ? 'Agencia Tributaria (modelo 182 de donativos, obligación legal art. 6.1.c); ' : '') + 'administraciones públicas cuando lo exija la ley.\n' +
         '· Transferencias internacionales: no se realizan.\n' +
         '· Plazo de supresión: ' + db.ajustes.conservarBajasAnios + ' años desde la baja.\n' +
         '· Medidas de seguridad: datos cifrados (AES-256) con contraseña en el equipo de la entidad; copias de seguridad cifradas; acceso limitado a los cargos de la junta; bloqueo automático tras ' + db.ajustes.bloqueoMin + ' minutos de inactividad; listados impresos custodiados y destruidos de forma segura.\n' +
@@ -2589,7 +3184,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   /* ---------------- CONFIGURACIÓN ---------------- */
   A.rutas.configuracion = function (c) {
-    var db = A.S.db, e = db.entidad, s = db.sepa, aj = db.ajustes;
+    var db = A.S.db, e = db.entidad, s = db.sepa, aj = db.ajustes, fi = db.fiscal;
     c.innerHTML = '<div class="titulo-pagina"><h1>Configuración</h1></div><form id="f-conf" novalidate>' +
       '<fieldset><legend>Datos de la entidad</legend><div class="columnas">' + A.campo('nombre', 'Nombre', e.nombre, { requerido: true }) +
       A.campo('perfil', 'Tipo de entidad', e.perfil, { opciones: Object.keys(A.PERFILES).map(function (k) { return [k, A.PERFILES[k].etiqueta]; }), ayuda: 'Cambia el vocabulario de la aplicación.' }) +
@@ -2608,6 +3203,13 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         ayuda: 'Necesario, por ejemplo, en la Archidiócesis de Granada: el cofrade asociado no tiene derecho a voto en los cabildos. Se guarda el historial de cada cambio de condición.' }) +
       '<div class="columnas">' + A.campo('votoEdadMin', 'Edad mínima para votar', aj.votoEdadMin, { tipo: 'number', attrs: ' min="0" max="30"' }) +
       A.campo('votoAntiguedadMin', 'Antigüedad mínima para votar (años)', aj.votoAntiguedadMin, { tipo: 'number', attrs: ' min="0" max="10"', ayuda: 'Ajústalas a vuestros estatutos. 0 = sin requisito.' }) + '</div></fieldset>' +
+      '<fieldset id="bloque-secciones"><legend>Secciones opcionales</legend>' +
+      A.campo('usarEnseres', 'Préstamo de material o enseres', A.usaEnseres(db), { tipo: 'checkbox', ayuda: 'Inventario de piezas (túnicas, equipaciones, material…) y préstamos con fianza. Viene activado en hermandades y clubes.' }) + '</fieldset>' +
+      '<fieldset id="bloque-donativos"><legend>Donativos y modelo 182</legend>' +
+      A.campo('acogida', 'La entidad está acogida al régimen fiscal de la Ley 49/2002', fi.acogida, { tipo: 'checkbox',
+        ayuda: 'Por ejemplo, asociaciones declaradas de utilidad pública que lo hayan comunicado a Hacienda, fundaciones o entidades de la Iglesia católica (hermandades y cofradías). Activa los certificados de donativos y el fichero del modelo 182. Si tenéis dudas, consultadlo con vuestra gestoría.' }) +
+      '<div class="columnas">' + A.campo('naturaleza', 'Naturaleza del declarante', fi.naturaleza, { opciones: A.NATURALEZAS_DECLARANTE }) +
+      A.campo('contacto', 'Persona de contacto con Hacienda (apellidos y nombre)', fi.contacto) + A.campo('telContacto', 'Teléfono de contacto', fi.telefono, { attrs: ' inputmode="tel"' }) + '</div></fieldset>' +
       '<div id="err-conf" aria-live="polite"></div><button class="principal" type="submit">Guardar configuración</button></form>';
     var form = A.$('#f-conf', c);
     A.$('select[name=perfil]', form).addEventListener('change', function (ev) { A.$('#bloque-cabildos', c).classList.toggle('oculto', ev.target.value !== 'hermandad'); });
@@ -2631,6 +3233,9 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       if (f.condicionCofrade !== db.ajustes.condicionCofrade) A.log(db, (f.condicionCofrade ? 'Activada' : 'Desactivada') + ' la distinción entre cofrades activos y asociados');
       Object.assign(db.ajustes, { bloqueoMin: Math.max(1, +f.bloqueoMin || 15), recordatorioCopiaDias: Math.max(1, +f.recordatorio || 7), conservarBajasAnios: Math.max(1, +f.conservar || 5),
         condicionCofrade: !!f.condicionCofrade, votoEdadMin: Math.max(0, +f.votoEdadMin || 0), votoAntiguedadMin: Math.max(0, +f.votoAntiguedadMin || 0) });
+      if (!!f.acogida !== !!db.fiscal.acogida) A.log(db, (f.acogida ? 'Activados' : 'Desactivados') + ' los donativos y el modelo 182');
+      Object.assign(db.fiscal, { acogida: !!f.acogida, naturaleza: f.naturaleza || '1', contacto: f.contacto || '', telefono: (f.telContacto || '').replace(/\D/g, '') });
+      if (A.vocab(db).enseres) db.ajustes.ocultarEnseres = !f.usarEnseres; else db.ajustes.usarEnseres = !!f.usarEnseres;
       localStorageSet('asocia-tema', f.tema); A.aplicarTema();
       A.log(db, 'Configuración actualizada'); A.guardar();
       A.toast(errs.length ? 'Guardado, pero revisa los avisos.' : 'Configuración guardada.');
@@ -2643,12 +3248,15 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
 
   /* ---------------- AYUDA ---------------- */
   A.rutas.ayuda = function (c) {
-    var v = A.vocab(A.S.db);
+    var db = A.S.db, v = A.vocab(db);
     var bloque = function (t, html) { return '<section class="tarjeta"><h2>' + t + '</h2>' + html + '</section>'; };
     c.innerHTML = '<div class="titulo-pagina"><h1>Ayuda</h1></div>' +
       bloque('Primeros pasos', '<ol><li>En <a href="#/configuracion">Configuración</a>, completa los datos de la entidad y los bancarios.</li><li>En <a href="#/cuotas?pestana=tipos">Cuotas › Tipos</a>, crea las cuotas que cobráis.</li>' +
         '<li>Da de alta a los ' + v.miembros + ' o impórtalos desde vuestra hoja de cálculo.</li><li>Cada periodo, genera las cuotas y crea la remesa para el banco.</li><li>Descarga una copia de seguridad cada semana.</li></ol>') +
       bloque('¿Dónde están mis datos?', '<p>Solo en este equipo, cifrados con vuestra contraseña: en el navegador y, si lo activas, en un fichero de vuestra elección. ' + A.APP.nombre + ' no tiene servidor ni recibe datos. Si borras el navegador sin copia, los datos se pierden.</p>') +
+      bloque('Actividades y lotería', '<p>En <a href="#/actividades">Actividades</a> crea la excursión, comida o campamento con sus precios y plazas, inscribe a ' + v.miembros + ' o a personas de fuera y registra los pagos, también a plazos. Para la lotería, crea una actividad de tipo «Lotería», entrega los talonarios a cada responsable y liquídalos cuando devuelvan el dinero.</p>') +
+      (A.usaEnseres(db) ? bloque(A.nombreEnseres(db) + ' y préstamos', '<p>Da de alta las piezas (o muchas a la vez con «Alta de varias piezas»), préstalas con fecha de devolución y fianza, e imprime el recibo para firmar. El panel avisa de los préstamos fuera de plazo.</p>') : '') +
+      (A.usaDonativos(db) ? bloque('Donativos y modelo 182', '<p>Marca como deducibles los tipos de cuota de afiliación y registra los donativos sueltos. En <a href="#/donativos">Donativos</a> imprime los certificados y descarga en enero el fichero del modelo 182 para subirlo en la sede de la Agencia Tributaria (Presentación mediante fichero). La sede revisa el fichero antes de presentarlo: si avisa de algún error, corrígelo y vuelve a descargarlo.</p>') : '') +
       bloque('¿Y si se olvida la contraseña?', '<p>En la pantalla de entrada, pulsa «¿Habéis olvidado la contraseña?» y escribe la <strong>llave de recuperación</strong> impresa: entraréis y elegiréis una contraseña nueva. La llave también abre las copias de seguridad hechas después de crearla. Puedes crear una llave nueva en <a href="#/datos">Datos y copias</a> si la anterior se pierde.</p>') +
       (v.salidas ? bloque('Salidas y tarjetas de sitio', '<ol><li>En <a href="#/salidas">Salidas</a>, crea la salida (por ejemplo, «Estación de penitencia 2027»). Puedes copiar los tipos de tarjeta del año anterior.</li>' +
         '<li>En «Tipos y precios», ajusta cada tipo (cirio, insignia, vara, costalero…), su precio y, si quieres, el número de plazas.</li><li>Durante el reparto, «Emitir tarjeta»: elige el ' + v.miembro + ', el tipo y si paga en el momento. Se avisa si tiene cuotas pendientes.</li>' +
@@ -2988,12 +3596,628 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 })(A);
 
+/* Alcancía · pantalla de donativos: certificados y fichero del modelo 182 */
+'use strict';
+(function (A) {
+  function anioPorDefecto() { var h = A.hoyISO(); return +h.slice(5, 7) >= 10 ? +h.slice(0, 4) : +h.slice(0, 4) - 1; }
+
+  A.rutas.donativos = function (c, params) {
+    var db = A.S.db, v = A.vocab(db), anio = +params.anio || anioPorDefecto();
+    var d = A.declaracion182(db, anio), deducibles = db.tiposCuota.filter(function (t) { return t.deducible; });
+    var anios = []; for (var y = +A.hoyISO().slice(0, 4); y >= +A.hoyISO().slice(0, 4) - 4; y--) anios.push([y, String(y)]);
+    c.innerHTML = '<div class="titulo-pagina"><h1>Donativos</h1><button data-accion="donativo">' + A.icono('mas') + ' Registrar donativo</button></div>' +
+      '<div class="aviso info">' + A.icono('ayuda', 20) + '<div><p>Las entidades acogidas a la Ley 49/2002 entregan a quien dona un <strong>certificado</strong> para su declaración de la renta y presentan cada enero el <strong>modelo 182</strong> a Hacienda con lo recibido el año anterior. ' +
+      'Aquí cuentan los donativos y las cuotas de los tipos marcados como deducibles, una vez pagados.</p></div></div>' +
+      (deducibles.length ? '' : '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>Ningún tipo de cuota está marcado como deducible. Si vuestras cuotas son de afiliación sin contraprestación, márcalo en <a href="#/cuotas?pestana=tipos">Cuotas › Tipos de cuota</a>.</p></div></div>') +
+      d.avisos.map(function (a) { return '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>' + A.esc(a) + ' <a href="#/configuracion">Ir a Configuración</a></p></div></div>'; }).join('') +
+      '<div class="barra"><div>' + A.campo('anio', 'Ejercicio', anio, { opciones: anios }) + '</div><div class="crece"></div></div>' +
+      '<div class="rejilla">' + A.kpi(d.validas.length, 'Declarados') + A.kpi(A.euros(d.totalCent), 'Total donado en ' + anio) + A.kpi(d.excluidas, 'Con datos que corregir') + '</div>' +
+      '<section class="tarjeta"><h2>Modelo 182 · ejercicio ' + anio + '</h2>' +
+      '<p>Se presenta en la sede electrónica de la Agencia Tributaria, del 1 al 31 de enero, en «Presentación mediante fichero». Necesitáis el certificado electrónico de la entidad o de su representante.</p>' +
+      '<form id="f-182" class="barra" novalidate><div>' + A.campo('justificante', 'Nº de justificante', db.fiscal.justificante || '1820000000001', { ayuda: '13 cifras empezando por 182. Para una declaración nueva podéis dejar el que aparece.' }) + '</div>' +
+      '<div>' + A.campo('tipoDecl', 'Tipo de declaración', '', { opciones: [['', 'Normal'], ['C', 'Complementaria'], ['S', 'Sustitutiva']] }) + '</div>' +
+      '<div>' + A.campo('anterior', 'Justificante de la anterior', '', { ayuda: 'Solo si es complementaria o sustitutiva.' }) + '</div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button class="principal" type="submit"' + (d.avisos.length || !d.validas.length ? ' disabled' : '') + '>' + A.icono('bajar') + ' Descargar fichero</button>' +
+      '<button type="button" data-accion="certificados"' + (d.validas.length ? '' : ' disabled') + '>' + A.icono('imprimir') + ' Imprimir certificados</button>' +
+      '<button type="button" data-accion="csv"' + (d.filas.length ? '' : ' disabled') + '>Exportar CSV</button></div></form>' +
+      '<p class="gris">El porcentaje sale solo: 80 % hasta 250 € por persona; por encima, 40 % (45 % si es recurrente). Para empresas, 40 % (50 % si es recurrente). Recurrente: donó en los dos años anteriores, y cada año igual o más que el anterior. Si los años anteriores no están en ' + A.APP.nombre + ', corrígelo con la casilla. Revisadlo con vuestra gestoría antes de presentarlo.</p></section>' +
+      (d.filas.length > 500 ? '<p class="gris">Se muestran primero quienes tienen datos que corregir y, después, las 500 primeras filas. El fichero, los certificados y el CSV incluyen a todos.</p>' : '') +
+      (d.filas.length ? '<div class="tabla-envoltorio"><table><thead><tr><th class="num">' + v.numero.replace('Nº de ', 'Nº') + '</th><th>Nombre</th><th>NIF</th><th class="num">Prov.</th><th class="num">Donado</th><th>Recurrente</th><th class="num">%</th><th>Comprobación</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        d.filas.filter(function (f) { return f.problemas.length; }).concat(d.filas.filter(function (f) { return !f.problemas.length; })).slice(0, Math.max(500, d.excluidas)).map(function (f) {
+          return '<tr><td class="num">' + A.esc(f.m.numero) + '</td><td>' + A.esc(A.nombreOrden(f.m)) + '</td><td class="mono">' + A.esc(f.nif || '—') + '</td><td class="num">' + (f.provincia || '—') + '</td>' +
+            '<td class="num">' + A.euros(f.importeCent) + '</td><td><label class="casilla"><input type="checkbox" data-recurrente="' + f.m.id + '"' + (f.recurrente ? ' checked' : '') + '> ' + (f.manual ? '<span class="gris">(a mano)</span>' : '') + '</label></td>' +
+            '<td class="num">' + f.porcentaje + '</td><td>' + (f.problemas.length ? '<a href="#/miembros?id=' + f.m.id + '">' + A.etiquetaEstado(f.problemas.join(' · '), 'error') + '</a>' : A.etiquetaEstado('Correcto', 'ok')) + '</td>' +
+            '<td><button class="mini" data-cert="' + f.m.id + '"' + (f.problemas.length ? ' disabled' : '') + '>Certificado</button></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">No hay donativos ni cuotas deducibles pagadas en ' + anio + '.</div>');
+
+    A.$('select[name=anio]', c).addEventListener('change', function (e) { A.ir('donativos?anio=' + e.target.value); });
+    c.addEventListener('change', function (e) {
+      var k = e.target.getAttribute('data-recurrente'); if (!k) return;
+      A.fijarRecurrencia(db, k, anio, e.target.checked); A.guardar(); A.pintar();
+    });
+    A.$('#f-182', c).addEventListener('submit', function (e) {
+      e.preventDefault();
+      var f = A.leerForm(e.target);
+      try {
+        var r = A.fichero182(db, anio, { justificante: f.justificante, complementaria: f.tipoDecl === 'C', sustitutiva: f.tipoDecl === 'S', anterior: (f.anterior || '').replace(/\D/g, '') });
+        db.fiscal.justificante = f.justificante.replace(/\D/g, '');
+        A.descargar('182_' + anio + '_' + A.limpiaDoc(db.entidad.nif) + '.txt', new Blob([A.latin1(r.texto)], { type: 'text/plain;charset=iso-8859-1' }));
+        A.log(db, 'Fichero del modelo 182 de ' + anio + ' (' + r.registros + ' declarados, ' + A.euros(r.totalCent) + ')'); A.guardar();
+        A.toast('Fichero descargado: ' + r.registros + ' declarados' + (r.excluidas ? '. ' + r.excluidas + ' quedan fuera por falta de datos.' : '.'));
+      } catch (err) { A.toast(err.message, 'mal'); }
+    });
+    c.addEventListener('click', function (e) {
+      var b;
+      if ((b = e.target.closest('[data-cert]'))) return A.imprimirCertificados(db, anio, [b.getAttribute('data-cert')]);
+      var a = e.target.closest('[data-accion]'); if (!a) return;
+      var acc = a.getAttribute('data-accion');
+      if (acc === 'certificados') A.imprimirCertificados(db, anio, d.validas.map(function (f) { return f.m.id; }));
+      if (acc === 'csv') A.descargar('donativos_' + anio + '.csv', A.aCSV(['Número', 'Apellidos y nombre', 'NIF', 'Provincia', 'Importe', 'Recurrente', 'Porcentaje', 'Comprobación'], d.filas.map(function (f) {
+        return [f.m.numero, A.nombreOrden(f.m), f.nif, f.provincia, A.decimalPunto(f.importeCent).replace('.', ','), f.recurrente ? 'Sí' : 'No', f.porcentaje, f.problemas.join(' · ') || 'Correcto'];
+      })), 'text/csv;charset=utf-8');
+      if (acc === 'donativo') dialogoDonativo(db);
+    });
+  };
+
+  function dialogoDonativo(db) {
+    var v = A.vocab(db);
+    var opciones = A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero').map(function (m) { return [m.id, m.numero + ' · ' + A.nombreOrden(m)]; });
+    A.modal({ titulo: 'Registrar donativo', html: '<form id="f-don" novalidate>' + A.campo('miembro', v.Miembro, '', { opciones: [['', 'Elige…']].concat(opciones) }) +
+      '<div class="columnas">' + A.campo('importe', 'Importe (€)', '', { attrs: ' inputmode="decimal"', requerido: true }) + A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) +
+      A.campo('forma', 'Forma de pago', 'transferencia', { opciones: A.opcionesCobro() }) + '</div>' + A.campo('concepto', 'Concepto', 'Donativo') +
+      '<p class="gris">Para donaciones de quien no es ' + v.miembro + ', dalo de alta antes con sus datos fiscales (NIF y código postal).</p></form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Registrar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-don', r));
+        A.registrarDonativo(db, { miembroId: f.miembro, importeCent: A.aCentimos(f.importe), fecha: f.fecha, formaPago: f.forma, concepto: f.concepto });
+        A.guardar();
+      } }] }).then(function (r) { if (r) { A.toast('Donativo registrado.'); A.pintar(); } });
+  }
+
+  /* Certificados (art. 24 Ley 49/2002): uno por página */
+  A.imprimirCertificados = function (db, anio, ids) {
+    var e = db.entidad, v = A.vocab(db);
+    var html = ids.map(function (id) {
+      var k = A.certificadoDonativos(db, id, anio); if (!k || !k.totalCent) return '';
+      var m = k.m;
+      return '<div class="certificado"><h2>Certificado de donativos · ejercicio ' + anio + '</h2>' +
+        '<p><strong>' + A.esc(e.nombre) + '</strong>, con NIF ' + A.esc(e.nif) + (e.direccion ? ' y domicilio en ' + A.esc([e.direccion, e.cp, e.localidad].filter(Boolean).join(', ')) : '') + ',</p>' +
+        '<p><strong>CERTIFICA</strong> que es una de las entidades beneficiarias del mecenazgo a las que se refiere el artículo 16 de la Ley 49/2002, de 23 de diciembre, de régimen fiscal de las entidades sin fines lucrativos y de los incentivos fiscales al mecenazgo, ' +
+        'y que durante el año ' + anio + ' ha recibido de:</p>' +
+        '<p class="donante"><strong>' + A.esc(A.nombreCompleto(m)) + '</strong> · NIF ' + A.esc(A.limpiaDoc(m.documento)) + (m.direccion ? '<br>' + A.esc([m.direccion, m.cp, m.localidad].filter(Boolean).join(', ')) : '') + '</p>' +
+        '<p>los siguientes donativos dinerarios, con carácter <strong>irrevocable</strong>, que se destinan al cumplimiento de los fines propios de ' + A.esc(v.entidad) + ':</p>' +
+        '<table><thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Importe</th></tr></thead><tbody>' + k.pagos.map(function (p) {
+          return '<tr><td>' + A.fechaES(p.fechaPago) + '</td><td>' + A.esc(p.concepto) + '</td><td class="num">' + A.euros(p.importeCent) + '</td></tr>';
+        }).join('') + '<tr><td colspan="2"><strong>Total</strong></td><td class="num"><strong>' + A.euros(k.totalCent) + '</strong></td></tr></tbody></table>' +
+        '<p>Y para que conste a efectos de lo previsto en el artículo 24 de la citada ley, se expide el presente certificado en ' + A.esc(e.localidad || '____________') + ', a ' + A.fechaES(A.hoyISO()) + '.</p>' +
+        '<div class="firmas"><div>La secretaría<br><br><br>Fdo.: ____________________</div><div>Visto bueno, la presidencia<br><br><br>Fdo.: ____________________</div></div></div>';
+    }).join('');
+    if (!html) return A.toast('No hay donativos que certificar.', 'mal');
+    A.imprimir('Certificados de donativos ' + anio, html);
+    A.log(db, 'Impresión de certificados de donativos de ' + anio + ' (' + ids.length + ')'); A.guardar();
+  };
+})(A);
+
+/* Alcancía · pantalla de enseres y material prestado */
+'use strict';
+(function (A) {
+  var fi = { texto: '', tipo: '', estado: '' }, fp = { estado: 'activos' };
+  var CLASE = { disponible: 'ok', prestado: 'aviso', baja: 'neutro' };
+
+  function opcionesMiembros(db) {
+    return A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero').map(function (m) { return [m.id, m.numero + ' · ' + A.nombreOrden(m)]; });
+  }
+  function etiquetaPieza(e) { return e ? A.esc(e.nombre) + (e.codigo ? ' <span class="mono">' + A.esc(e.codigo) + '</span>' : '') + (e.talla ? ' · talla ' + A.esc(e.talla) : '') : '—'; }
+
+  A.rutas.enseres = function (c, params) {
+    var db = A.S.db, v = A.vocab(db), pest = params.pestana || 'inventario', r = A.resumenEnseres(db), titulo = A.nombreEnseres(db);
+    c.innerHTML = '<div class="titulo-pagina"><h1>' + titulo + '</h1><div class="fila-acciones"><button data-accion="lote">Alta de varias piezas</button>' +
+      '<button class="principal" data-accion="nueva">' + A.icono('mas') + ' Nueva pieza</button></div></div>' +
+      '<div class="rejilla">' + A.kpi(r.piezas, 'Piezas en inventario') + A.kpi(r.disponibles, 'Disponibles') + A.kpi(r.prestadas, 'Prestadas') +
+      A.kpi(r.vencidos, 'Préstamos fuera de plazo') + A.kpi(A.euros(r.fianzasCent), 'Fianzas en depósito') + '</div>' +
+      '<div class="pestanas" role="tablist">' + [['inventario', 'Inventario'], ['prestamos', 'Préstamos'], ['listados', 'Listados']].map(function (p) {
+        return '<button role="tab" aria-selected="' + (pest === p[0]) + '" data-pest="' + p[0] + '">' + p[1] + '</button>';
+      }).join('') + '</div><div id="contenido-enseres"></div>';
+    c.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pest]'); if (b) return A.ir('enseres?pestana=' + b.getAttribute('data-pest'));
+      var a = e.target.closest('[data-accion]'); if (a) {
+        var acc = a.getAttribute('data-accion');
+        if (acc === 'nueva') return dialogoPieza(db, null);
+        if (acc === 'lote') return dialogoLote(db);
+      }
+      if ((b = e.target.closest('[data-prestar]'))) return A.dialogoPrestar(db, { enserId: b.getAttribute('data-prestar') });
+      if ((b = e.target.closest('[data-devolver]'))) return dialogoDevolver(db, b.getAttribute('data-devolver'));
+      if ((b = e.target.closest('[data-recibo]'))) return A.imprimirRecibo(db, b.getAttribute('data-recibo'));
+      if ((b = e.target.closest('[data-fianza]'))) { A.cobrarFianza(db, b.getAttribute('data-fianza')); A.guardar(); A.toast('Fianza cobrada.'); return A.pintar(); }
+      if ((b = e.target.closest('[data-pieza]'))) return dialogoPieza(db, b.getAttribute('data-pieza'));
+    });
+    var cont = A.$('#contenido-enseres', c);
+    if (pest === 'prestamos') return pintarPrestamos(cont, db, v);
+    if (pest === 'listados') return pintarListados(cont, db, v, r);
+    pintarInventario(cont, db, v);
+  };
+
+  function pintarInventario(cont, db, v) {
+    if (!db.enseres.length) {
+      cont.innerHTML = '<div class="tarjeta vacio"><p>Registra aquí ' + (db.entidad.perfil === 'hermandad' ? 'las túnicas, capirotes, insignias y demás enseres' : 'el material') + ' que se presta, con su código y talla. ' +
+        'Para dar de alta muchas piezas iguales (por ejemplo, 30 túnicas de la talla M), usa «Alta de varias piezas».</p></div>';
+      return;
+    }
+    var tipos = Array.from(new Set(db.enseres.map(function (e) { return e.tipo; }))).sort(A.comparaTexto);
+    cont.innerHTML = '<div class="barra"><div class="crece">' + A.campo('texto', 'Buscar', fi.texto, { tipo: 'search', ph: 'Nombre, código, talla o quién la tiene' }) + '</div>' +
+      '<div>' + A.campo('tipo', 'Tipo', fi.tipo, { opciones: [['', 'Todos']].concat(tipos.map(function (t) { return [t, t]; })) }) + '</div>' +
+      '<div>' + A.campo('estado', 'Estado', fi.estado, { opciones: [['', 'Todos'], ['disponible', 'Disponibles'], ['prestado', 'Prestadas'], ['baja', 'De baja']] }) + '</div></div><div id="lista-enseres"></div>';
+    var lista = function () {
+      var t = A.normaliza(fi.texto);
+      var filas = db.enseres.filter(function (e) {
+        if (fi.tipo && e.tipo !== fi.tipo) return false;
+        if (fi.estado && e.estado !== fi.estado) return false;
+        if (!t) return true;
+        var p = A.prestamoActivo(db, e.id), m = p ? A.miembroPorId(db, p.miembroId) : null;
+        return [e.nombre, e.codigo, e.talla, e.ubicacion, m && A.nombreCompleto(m), m && m.numero].some(function (y) { return A.normaliza(y).indexOf(t) >= 0; });
+      });
+      filas = A.ordenarPor(filas, function (e) { return e.tipo + ' ' + e.codigo; });
+      var MAX = 500;
+      A.$('#lista-enseres', cont).innerHTML = '<p class="gris" aria-live="polite">' + filas.length + ' piezas' + (filas.length > MAX ? ' · se muestran las ' + MAX + ' primeras' : '') + '</p>' +
+        (filas.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Código</th><th>Pieza</th><th>Tipo</th><th>Talla</th><th>Estado</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        filas.slice(0, MAX).map(function (e) {
+          var p = A.prestamoActivo(db, e.id), m = p ? A.miembroPorId(db, p.miembroId) : null;
+          var est = A.etiquetaEstado(A.ESTADOS_ENSER[e.estado], CLASE[e.estado]) + (m ? ' <span class="gris">' + A.esc(m.numero + ' · ' + A.nombreOrden(m)) + '</span>' : '');
+          var acc = e.estado === 'disponible' ? '<button class="mini" data-prestar="' + e.id + '">Prestar</button>' : p ? '<button class="mini" data-devolver="' + p.id + '">Devolver</button>' : '';
+          return '<tr class="clicable" data-pieza="' + e.id + '" tabindex="0"><td class="mono">' + A.esc(e.codigo || '—') + '</td><td>' + A.esc(e.nombre) + '</td><td>' + A.esc(e.tipo) + '</td><td>' + A.esc(e.talla || '') + '</td><td>' + est + '</td>' +
+            '<td><div class="fila-acciones">' + acc + '</div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">No hay piezas con estos filtros.</div>');
+    };
+    lista();
+    A.$('input[name=texto]', cont).addEventListener('input', A.debounce(function (e) { fi.texto = e.target.value; lista(); }, 150));
+    ['tipo', 'estado'].forEach(function (n) { A.$('select[name=' + n + ']', cont).addEventListener('change', function (e) { fi[n] = e.target.value; lista(); }); });
+  }
+
+  function pintarPrestamos(cont, db, v) {
+    var hoy = A.hoyISO();
+    var todos = db.prestamos.map(function (p) { return { p: p, e: A.enserPorId(db, p.enserId), m: A.miembroPorId(db, p.miembroId), vencido: !p.fechaDevolucion && p.fechaPrevista && p.fechaPrevista < hoy }; });
+    cont.innerHTML = '<div class="barra"><div>' + A.campo('estadoP', 'Mostrar', fp.estado, { opciones: [['activos', 'Prestados ahora'], ['vencidos', 'Fuera de plazo'], ['devueltos', 'Devueltos'], ['', 'Todos']] }) + '</div>' +
+      '<div class="crece"></div><div style="padding-bottom:12px"><button class="principal" data-prestar="">' + A.icono('mas') + ' Nuevo préstamo</button></div></div><div id="lista-prestamos"></div>';
+    var lista = function () {
+      var filas = todos.filter(function (x) {
+        if (fp.estado === 'activos') return !x.p.fechaDevolucion;
+        if (fp.estado === 'vencidos') return x.vencido;
+        if (fp.estado === 'devueltos') return !!x.p.fechaDevolucion;
+        return true;
+      }).sort(function (a, b) { return (a.p.fechaPrevista || '9') < (b.p.fechaPrevista || '9') ? -1 : 1; });
+      A.$('#lista-prestamos', cont).innerHTML = filas.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Pieza</th><th>' + v.Miembro + '</th><th>Prestada</th><th>Devolver antes de</th><th>Fianza</th><th>Estado</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        filas.map(function (x) {
+          var p = x.p, est = p.fechaDevolucion ? A.etiquetaEstado('Devuelta ' + A.fechaES(p.fechaDevolucion) + (p.estadoDevolucion !== 'bien' ? ' · ' + A.ESTADOS_DEVOLUCION[p.estadoDevolucion].toLowerCase() : ''), p.estadoDevolucion === 'bien' ? 'ok' : 'error')
+            : x.vencido ? A.etiquetaEstado('Fuera de plazo', 'error') : A.etiquetaEstado('Prestada', 'aviso');
+          var acc = (!p.fechaDevolucion ? '<button class="mini" data-devolver="' + p.id + '">Devolver</button>' : '') + (p.fianzaEstado === 'pendiente' ? '<button class="mini" data-fianza="' + p.id + '">Cobrar fianza</button>' : '') +
+            '<button class="mini" data-recibo="' + p.id + '">Recibo</button>';
+          return '<tr><td>' + etiquetaPieza(x.e) + '</td><td>' + (x.m ? A.esc(x.m.numero + ' · ' + A.nombreOrden(x.m)) : '<span class="gris">Datos suprimidos</span>') + '</td><td>' + A.fechaES(p.fechaPrestamo) + '</td>' +
+            '<td>' + (p.fechaPrevista ? A.fechaES(p.fechaPrevista) : '—') + '</td><td>' + (p.fianzaCent ? A.euros(p.fianzaCent) + ' <span class="gris">' + A.ESTADOS_FIANZA[p.fianzaEstado].toLowerCase() + '</span>' : '—') + '</td><td>' + est + '</td>' +
+            '<td><div class="fila-acciones">' + acc + '</div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">No hay préstamos con este filtro.</div>';
+    };
+    lista();
+    A.$('select[name=estadoP]', cont).addEventListener('change', function (e) { fp.estado = e.target.value; lista(); });
+  }
+
+  function pintarListados(cont, db, v, r) {
+    cont.innerHTML = '<section class="tarjeta"><h2>Disponibles por tipo y talla</h2>' + (Object.keys(r.porTipo).length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Tipo</th><th class="num">Total</th><th class="num">Disponibles</th><th class="num">Prestadas</th><th>Disponibles por talla</th></tr></thead><tbody>' +
+      Object.keys(r.porTipo).sort(A.comparaTexto).map(function (k) {
+        var t = r.porTipo[k];
+        return '<tr><td>' + A.esc(k) + '</td><td class="num">' + t.total + '</td><td class="num">' + t.disponibles + '</td><td class="num">' + t.prestadas + '</td><td>' +
+          Object.keys(t.tallas).sort(A.comparaTexto).map(function (s) { return A.esc(s) + ': ' + t.tallas[s]; }).join(' · ') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' : '<p class="gris">Todavía no hay piezas.</p>') + '</section>' +
+      '<section class="tarjeta"><h2>Imprimir</h2><div class="fila-acciones"><button data-l="pendientes">Préstamos pendientes de devolver</button><button data-l="inventario">Inventario completo</button>' +
+      '<button data-l="fianzas">Fianzas en depósito</button><button data-l="csv">Exportar inventario (CSV)</button></div></section>';
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-l]'); if (!b) return;
+      var l = b.getAttribute('data-l'), act = A.prestamosActivos(db);
+      if (l === 'pendientes') A.imprimir('Préstamos pendientes de devolver', tabla(['Nº', v.Miembro, 'Teléfono', 'Pieza', 'Prestada', 'Devolver antes de', 'Fianza'],
+        A.ordenarPor(act, function (x) { return x.m ? +x.m.numero : 0; }).map(function (x) {
+          return [x.m ? x.m.numero : '', x.m ? A.nombreOrden(x.m) : 'Datos suprimidos', x.m ? x.m.telefono : '', x.e ? x.e.nombre + ' ' + (x.e.codigo || '') + (x.e.talla ? ' (' + x.e.talla + ')' : '') : '',
+            A.fechaES(x.p.fechaPrestamo), (x.p.fechaPrevista ? A.fechaES(x.p.fechaPrevista) : '') + (x.vencido ? ' ⚠' : ''), x.p.fianzaCent ? A.euros(x.p.fianzaCent) : ''];
+        })) + '<p>Total: ' + act.length + ' préstamos · ' + act.filter(function (x) { return x.vencido; }).length + ' fuera de plazo.</p>');
+      if (l === 'inventario') A.imprimir('Inventario de ' + A.nombreEnseres(db).toLowerCase(), tabla(['Código', 'Pieza', 'Tipo', 'Talla', 'Ubicación', 'Estado'],
+        A.ordenarPor(db.enseres, function (e) { return e.tipo + ' ' + e.codigo; }).map(function (e) { return [e.codigo, e.nombre, e.tipo, e.talla, e.ubicacion, A.ESTADOS_ENSER[e.estado]]; })) +
+        '<p>Total: ' + db.enseres.length + ' piezas.</p>');
+      if (l === 'fianzas') {
+        var fz = act.filter(function (x) { return x.p.fianzaEstado === 'cobrada'; });
+        A.imprimir('Fianzas en depósito', tabla(['Nº', v.Miembro, 'Pieza', 'Fecha', 'Importe'], fz.map(function (x) {
+          return [x.m ? x.m.numero : '', x.m ? A.nombreOrden(x.m) : 'Datos suprimidos', x.e ? x.e.nombre + ' ' + (x.e.codigo || '') : '', A.fechaES(x.p.fechaPrestamo), A.euros(x.p.fianzaCent)];
+        })) + '<p>Total: ' + A.euros(fz.reduce(function (s, x) { return s + x.p.fianzaCent; }, 0)) + '</p>');
+      }
+      if (l === 'csv') A.descargar('inventario.csv', A.aCSV(['Código', 'Pieza', 'Tipo', 'Talla', 'Ubicación', 'Estado', 'Fianza', 'Prestada a'], db.enseres.map(function (e) {
+        var p = A.prestamoActivo(db, e.id), m = p ? A.miembroPorId(db, p.miembroId) : null;
+        return [e.codigo, e.nombre, e.tipo, e.talla, e.ubicacion, A.ESTADOS_ENSER[e.estado], A.decimalPunto(e.fianzaCent || 0).replace('.', ','), m ? m.numero + ' ' + A.nombreOrden(m) : ''];
+      })), 'text/csv;charset=utf-8');
+    });
+  }
+  function tabla(cab, filas) {
+    return '<table><thead><tr>' + cab.map(function (h) { return '<th>' + A.esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      filas.map(function (f) { return '<tr>' + f.map(function (x) { return '<td>' + A.esc(x == null ? '' : x) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table>';
+  }
+  A.tablaImpresion = tabla;
+
+  /* ---------- diálogos ---------- */
+  function dialogoPieza(db, id) {
+    var e = id ? A.enserPorId(db, id) : { nombre: '', tipo: A.tiposEnser(db)[0], codigo: '', talla: '', ubicacion: '', fianzaCent: 0, observaciones: '', estado: 'disponible' };
+    var hist = id ? A.historialEnser(db, id) : [];
+    A.modal({ titulo: id ? 'Pieza ' + (e.codigo || e.nombre) : 'Nueva pieza', ancho: true, html: '<form id="f-pieza" novalidate><div class="columnas">' +
+      A.campo('nombre', 'Nombre', e.nombre, { requerido: true, ph: 'Túnica de nazareno, vara de presidencia…' }) +
+      A.campo('tipo', 'Tipo', e.tipo, { opciones: A.tiposEnser(db).map(function (t) { return [t, t]; }) }) +
+      A.campo('codigo', 'Código o número', e.codigo, { ph: 'T-25' }) + A.campo('talla', 'Talla o medida', e.talla) +
+      A.campo('ubicacion', 'Dónde se guarda', e.ubicacion, { ph: 'Armario 2, almacén…' }) +
+      A.campo('fianza', 'Fianza al prestarla (€)', e.fianzaCent ? A.decimalPunto(e.fianzaCent).replace('.', ',') : '', { attrs: ' inputmode="decimal"' }) + '</div>' +
+      A.campo('observaciones', 'Observaciones', e.observaciones, { tipo: 'textarea' }) +
+      (id && e.estado !== 'prestado' ? A.campo('baja', 'Dada de baja (rota, perdida o retirada)', e.estado === 'baja', { tipo: 'checkbox' }) : '') + '</form>' +
+      (hist.length ? '<details class="historial" open><summary>' + A.icono('historial', 18) + ' Préstamos (' + hist.length + ')</summary><ul class="lista-avisos">' + hist.map(function (x) {
+        return '<li>' + A.fechaES(x.p.fechaPrestamo) + ' · ' + (x.m ? A.esc(x.m.numero + ' · ' + A.nombreOrden(x.m)) : 'Datos suprimidos') + ' · ' +
+          (x.p.fechaDevolucion ? 'devuelta el ' + A.fechaES(x.p.fechaDevolucion) + ' (' + A.ESTADOS_DEVOLUCION[x.p.estadoDevolucion].toLowerCase() + ')' : '<strong>prestada</strong>') + '</li>';
+      }).join('') + '</ul></details>' : ''),
+      botones: (id && !hist.length ? [{ texto: 'Borrar', valor: 'borrar', clase: 'peligro', izq: true }] : []).concat([{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-pieza', r));
+        A.guardarEnser(db, { id: id, nombre: f.nombre, tipo: f.tipo, codigo: f.codigo, talla: f.talla, ubicacion: f.ubicacion, fianzaCent: A.aCentimos(f.fianza) || 0, observaciones: f.observaciones, baja: id ? !!f.baja : undefined });
+        A.guardar();
+      } }]) }).then(function (r) {
+      if (r === 'borrar') return A.confirmar('Borrar pieza', 'Se borrará «' + e.nombre + '» del inventario.', 'Borrar', true).then(function (ok) {
+        if (ok) { try { A.borrarEnser(db, id); A.guardar(); } catch (err) { A.toast(err.message, 'mal'); } A.pintar(); }
+      });
+      if (r) A.pintar();
+    });
+  }
+
+  function dialogoLote(db) {
+    A.modal({ titulo: 'Alta de varias piezas', html: '<form id="f-lote" novalidate><div class="columnas">' +
+      A.campo('tipo', 'Tipo', A.tiposEnser(db)[0], { opciones: A.tiposEnser(db).map(function (t) { return [t, t]; }) }) +
+      A.campo('nombre', 'Nombre', '', { ph: 'Túnica de nazareno' }) + A.campo('talla', 'Talla', '') +
+      A.campo('cantidad', 'Cuántas', 10, { tipo: 'number', attrs: ' min="1" max="500"' }) + A.campo('prefijo', 'Prefijo del código', 'T-', { ayuda: 'Los códigos serán prefijo + número: T-1, T-2…' }) +
+      A.campo('desde', 'Primer número', db.enseres.length + 1, { tipo: 'number', attrs: ' min="1"' }) +
+      A.campo('ubicacion', 'Dónde se guardan', '') + A.campo('fianza', 'Fianza por pieza (€)', '', { attrs: ' inputmode="decimal"' }) + '</div></form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Dar de alta', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-lote', r));
+        var n = A.altaLote(db, { tipo: f.tipo, nombre: f.nombre || f.tipo, talla: f.talla, cantidad: f.cantidad, prefijo: f.prefijo, desde: f.desde, ubicacion: f.ubicacion, fianzaCent: A.aCentimos(f.fianza) || 0 }).length;
+        A.guardar(); A.toast(n + ' piezas dadas de alta.');
+      } }] }).then(function (r) { if (r) A.pintar(); });
+  }
+
+  /* Prestar: desde el inventario (con la pieza elegida) o desde la ficha (con la persona elegida) */
+  A.dialogoPrestar = function (db, pre) {
+    var v = A.vocab(db), libres = A.ordenarPor(db.enseres.filter(function (e) { return e.estado === 'disponible'; }), function (e) { return e.tipo + ' ' + e.codigo; });
+    if (!libres.length) return A.toast('No hay piezas disponibles.', 'mal');
+    var e0 = A.enserPorId(db, pre.enserId) || libres[0];
+    var prev = new Date(); prev.setDate(prev.getDate() + 30);
+    A.modal({ titulo: 'Prestar', html: '<form id="f-prestar" novalidate>' +
+      A.campo('enser', 'Pieza', e0.id, { opciones: libres.map(function (e) { return [e.id, (e.codigo ? e.codigo + ' · ' : '') + e.nombre + (e.talla ? ' (' + e.talla + ')' : '')]; }) }) +
+      A.campo('miembro', v.Miembro, pre.miembroId || '', { opciones: [['', 'Elige…']].concat(opcionesMiembros(db)) }) +
+      '<div class="columnas">' + A.campo('fecha', 'Fecha del préstamo', A.hoyISO(), { tipo: 'date' }) + A.campo('prevista', 'Devolver antes de', A.fechaISO(prev), { tipo: 'date' }) +
+      A.campo('fianza', 'Fianza (€)', e0.fianzaCent ? A.decimalPunto(e0.fianzaCent).replace('.', ',') : '', { attrs: ' inputmode="decimal"' }) +
+      A.campo('forma', 'Forma de pago de la fianza', 'efectivo', { opciones: A.opcionesCobro() }) + '</div>' +
+      A.campo('cobrada', 'Fianza cobrada ahora', true, { tipo: 'checkbox' }) + A.campo('motivo', 'Motivo', '', { ph: 'Estación de penitencia, temporada…' }) +
+      A.campo('recibo', 'Imprimir el recibo para firmar', true, { tipo: 'checkbox' }) + '</form>',
+      alAbrir: function (r) {
+        A.$('select[name=enser]', r).addEventListener('change', function (ev) {
+          var e = A.enserPorId(db, ev.target.value); A.$('input[name=fianza]', r).value = e && e.fianzaCent ? A.decimalPunto(e.fianzaCent).replace('.', ',') : '';
+        });
+      },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Prestar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-prestar', r));
+        var p = A.prestar(db, { enserId: f.enser, miembroId: f.miembro, fecha: f.fecha, fechaPrevista: f.prevista, fianzaCent: A.aCentimos(f.fianza) || 0,
+          fianzaCobrada: !!f.cobrada, formaPago: f.forma, motivo: f.motivo });
+        A.guardar(); if (f.recibo) setTimeout(function () { A.imprimirRecibo(db, p.id); }, 50);
+      } }] }).then(function (r) { if (r) { A.toast('Préstamo registrado.'); A.pintar(); } });
+  };
+
+  function dialogoDevolver(db, id) {
+    var p = db.prestamos.find(function (x) { return x.id === id; }), e = A.enserPorId(db, p.enserId);
+    A.modal({ titulo: 'Devolución de ' + (e ? e.nombre + ' ' + (e.codigo || '') : 'la pieza'), html: '<form id="f-dev" novalidate><div class="columnas">' +
+      A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + A.campo('estado', 'Cómo se devuelve', 'bien', { opciones: Object.keys(A.ESTADOS_DEVOLUCION).map(function (k) { return [k, A.ESTADOS_DEVOLUCION[k]]; }) }) +
+      (p.fianzaEstado === 'cobrada' ? A.campo('fianza', 'Fianza de ' + A.euros(p.fianzaCent), 'devuelta', { opciones: [['devuelta', 'Se devuelve'], ['retenida', 'Se retiene (daños o pérdida)']] }) : '') + '</div>' +
+      A.campo('obs', 'Observaciones', '', { ph: 'Mancha en la manga, falta el cíngulo…' }) + '</form>',
+      alAbrir: function (r) { A.$('select[name=estado]', r).addEventListener('change', function (ev) { var fz = A.$('select[name=fianza]', r); if (fz) fz.value = ev.target.value === 'bien' ? 'devuelta' : 'retenida'; }); },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Registrar devolución', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-dev', r));
+        A.devolver(db, id, { fecha: f.fecha, estado: f.estado, fianza: f.fianza, observaciones: f.obs }); A.guardar();
+      } }] }).then(function (r) { if (r) { A.toast('Devolución registrada.'); A.pintar(); } });
+  }
+  A.dialogoDevolver = dialogoDevolver;
+
+  /* Recibo para firmar al recoger la pieza */
+  A.imprimirRecibo = function (db, id) {
+    var p = db.prestamos.find(function (x) { return x.id === id; }); if (!p) return;
+    var e = A.enserPorId(db, p.enserId) || {}, m = A.miembroPorId(db, p.miembroId) || {}, ent = db.entidad;
+    A.imprimir('Recibo de préstamo', '<div class="certificado"><p>Recibo de ' + A.esc(ent.nombre) + ' en préstamo:</p>' +
+      '<table><tbody><tr><th>Pieza</th><td>' + A.esc(e.nombre || '') + (e.codigo ? ' · código ' + A.esc(e.codigo) : '') + (e.talla ? ' · talla ' + A.esc(e.talla) : '') + '</td></tr>' +
+      '<tr><th>Fecha del préstamo</th><td>' + A.fechaES(p.fechaPrestamo) + '</td></tr>' + (p.fechaPrevista ? '<tr><th>Devolver antes de</th><td>' + A.fechaES(p.fechaPrevista) + '</td></tr>' : '') +
+      (p.fianzaCent ? '<tr><th>Fianza</th><td>' + A.euros(p.fianzaCent) + ' (' + A.ESTADOS_FIANZA[p.fianzaEstado].toLowerCase() + ')</td></tr>' : '') +
+      (p.motivo ? '<tr><th>Motivo</th><td>' + A.esc(p.motivo) + '</td></tr>' : '') + '</tbody></table>' +
+      '<p>Me comprometo a cuidarla, a devolverla limpia y en buen estado en la fecha indicada y, en caso de daño o pérdida, a que se retenga la fianza.</p>' +
+      '<p><strong>' + A.esc(A.nombreCompleto(m)) + '</strong>' + (m.numero ? ' · ' + A.esc(A.vocab(db).numero) + ' ' + A.esc(m.numero) : '') + (m.documento ? ' · ' + A.esc(m.documento) : '') + '</p>' +
+      '<div class="firmas"><div>Firma de quien recibe<br><br><br>____________________</div><div>Por ' + A.esc(A.vocab(db).entidad) + '<br><br><br>____________________</div></div></div>');
+  };
+})(A);
+
+/* Alcancía · pantalla de actividades con cobro y lotería */
+'use strict';
+(function (A) {
+  var fi = { texto: '', estado: 'vigentes' };
+  var CLASE = { pendiente: 'aviso', parcial: 'aviso', pagada: 'ok', anulada: 'neutro' };
+  function opcionesMiembros(db) {
+    return A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero').map(function (m) { return [m.id, m.numero + ' · ' + A.nombreOrden(m)]; });
+  }
+  A.etiquetaInscripcion = function (x) {
+    return A.etiquetaEstado(A.ESTADOS_INSCRIPCION[x.estado] + (x.estado === 'parcial' ? ' (' + A.euros(x.pagadoCent || 0) + ')' : ''), CLASE[x.estado]);
+  };
+
+  A.rutas.actividades = function (c, params) {
+    var db = A.S.db, v = A.vocab(db);
+    if (!db.actividades.length) {
+      c.innerHTML = '<div class="titulo-pagina"><h1>Actividades</h1></div><div class="tarjeta vacio"><p>Organiza aquí las actividades que se cobran aparte de la cuota: excursiones, campamentos, comidas, cursos… ' +
+        'Cada una con sus precios (' + v.miembros + ', no ' + v.miembros + ', infantil…), plazas, inscripciones y pagos en uno o varios plazos.</p>' +
+        '<p>También sirve para controlar la <strong>lotería de Navidad</strong>: talonarios entregados a cada responsable y su liquidación.</p>' +
+        '<button class="principal" data-accion="nueva">' + A.icono('mas') + ' Crear la primera actividad</button></div>';
+      c.addEventListener('click', function (e) { if (e.target.closest('[data-accion=nueva]')) dialogoActividad(db, null); });
+      return;
+    }
+    var a = A.actividadPorId(db, params.id) || db.actividades.find(function (x) { return x.estado === 'abierta'; }) || db.actividades[0];
+    var loteria = a.tipo === 'loteria', pest = params.pestana || (loteria ? 'talonarios' : 'inscripciones'), cerrada = a.estado === 'cerrada';
+    c.innerHTML = '<div class="titulo-pagina"><h1>Actividades</h1><button data-accion="nueva">' + A.icono('mas') + ' Nueva actividad</button></div>' +
+      '<div class="barra"><div class="crece">' + A.campo('actSel', 'Actividad', a.id, { opciones: db.actividades.map(function (x) {
+        return [x.id, x.nombre + (x.fecha ? ' · ' + A.fechaES(x.fecha) : '') + (x.estado === 'cerrada' ? ' (cerrada)' : '')]; }) }) + '</div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button data-accion="editar">Editar</button><button data-accion="cerrar">' + (cerrada ? 'Reabrir' : 'Cerrar') + '</button>' +
+      '<button data-accion="borrar" class="peligro">Borrar</button></div></div>' +
+      '<p class="gris">' + A.esc(A.TIPOS_ACTIVIDAD[a.tipo] || '') + (a.lugar ? ' · ' + A.esc(a.lugar) : '') + (a.fechaFin ? ' · del ' + A.fechaES(a.fecha) + ' al ' + A.fechaES(a.fechaFin) : '') +
+      (loteria ? ' · Número' + (/[,;\s]/.test(a.numeros || '') ? 's' : '') + ' ' + A.esc(a.numeros || '—') + ' · participación de ' + A.euros(a.precioCent) + (a.donativoCent ? ' (' + A.euros(a.donativoCent) + ' de donativo)' : '')
+        : ' · ' + a.precios.map(function (p) { return A.esc(p.nombre) + ' ' + A.euros(p.importeCent); }).join(' · ') + (a.plazas ? ' · ' + a.plazas + ' plazas' : '')) + '</p>' +
+      (cerrada ? '<div class="aviso info">' + A.icono('candado', 20) + '<div><p>Actividad cerrada: se puede consultar y cobrar lo pendiente, pero no inscribir.</p></div></div>' : '') +
+      '<div class="pestanas" role="tablist">' + (loteria ? [['talonarios', 'Talonarios'], ['resumen', 'Resumen']] : [['inscripciones', 'Inscripciones'], ['resumen', 'Resumen y listados']]).map(function (p) {
+        return '<button role="tab" aria-selected="' + (pest === p[0]) + '" data-pest="' + p[0] + '">' + p[1] + '</button>';
+      }).join('') + '</div><div id="contenido-actividad"></div>';
+    A.$('select[name=actSel]', c).addEventListener('change', function (e) { A.ir('actividades?id=' + e.target.value); });
+    c.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pest]'); if (b) return A.ir('actividades?id=' + a.id + '&pestana=' + b.getAttribute('data-pest'));
+      var x = e.target.closest('[data-accion]'); if (!x) return;
+      var acc = x.getAttribute('data-accion');
+      if (acc === 'nueva') dialogoActividad(db, null);
+      if (acc === 'editar') dialogoActividad(db, a);
+      if (acc === 'cerrar') { A.cerrarActividad(db, a.id, !cerrada); A.guardar(); A.pintar(); }
+      if (acc === 'borrar') A.confirmar('Borrar actividad', 'Se borrará «' + a.nombre + '». Solo es posible si no tiene inscripciones ni talonarios.', 'Borrar', true).then(function (ok) {
+        if (!ok) return; try { A.borrarActividad(db, a.id); A.guardar(); A.ir('actividades'); } catch (err) { A.toast(err.message, 'mal'); }
+      });
+    });
+    var cont = A.$('#contenido-actividad', c);
+    if (loteria) return pest === 'resumen' ? resumenLoteria(cont, db, a) : talonarios(cont, db, a, v);
+    if (pest === 'resumen') return resumen(cont, db, a, v);
+    inscripciones(cont, db, a, v, params);
+  };
+
+  /* ---------- actividad: alta y edición ---------- */
+  function dialogoActividad(db, a) {
+    var x = a || { nombre: '', tipo: 'excursion', fecha: '', fechaFin: '', lugar: '', plazas: 0, observaciones: '', precios: [{ id: A.uid('p'), nombre: A.vocab(db).Miembros, importeCent: 0 }, { id: A.uid('p'), nombre: 'No ' + A.vocab(db).miembros, importeCent: 0 }], precioCent: 500, donativoCent: 100, porTalonario: 50, numeros: '' };
+    var precios = JSON.parse(JSON.stringify(x.precios || []));
+    var filaPrecio = function (p) { return '<div class="barra fila-precio" data-id="' + p.id + '"><div class="crece">' + A.campo('pn', 'Precio', p.nombre) + '</div><div>' +
+      A.campo('pi', 'Importe (€)', p.importeCent ? A.decimalPunto(p.importeCent).replace('.', ',') : '', { attrs: ' inputmode="decimal"' }) + '</div><div style="padding-bottom:12px"><button type="button" class="mini" data-quitar>Quitar</button></div></div>'; };
+    A.modal({ titulo: a ? 'Editar actividad' : 'Nueva actividad', ancho: true, html: '<form id="f-act" novalidate><div class="columnas">' +
+      A.campo('nombre', 'Nombre', x.nombre, { requerido: true, ph: 'Excursión a la granja escuela, Lotería de Navidad…' }) +
+      A.campo('tipo', 'Tipo', x.tipo, { opciones: Object.keys(A.TIPOS_ACTIVIDAD).map(function (k) { return [k, A.TIPOS_ACTIVIDAD[k]]; }) }) +
+      A.campo('fecha', 'Fecha', x.fecha, { tipo: 'date' }) + '<div class="no-loteria">' + A.campo('fechaFin', 'Hasta (si dura varios días)', x.fechaFin, { tipo: 'date' }) + '</div>' +
+      '<div class="no-loteria">' + A.campo('lugar', 'Lugar', x.lugar) + '</div><div class="no-loteria">' + A.campo('plazas', 'Plazas (0 = sin límite)', x.plazas || 0, { tipo: 'number', attrs: ' min="0"' }) + '</div></div>' +
+      '<fieldset class="no-loteria"><legend>Precios</legend><div id="precios">' + precios.map(filaPrecio).join('') + '</div><button type="button" class="mini" id="b-precio">' + A.icono('mas') + ' Añadir precio</button></fieldset>' +
+      '<fieldset class="si-loteria"><legend>Lotería</legend><div class="columnas">' + A.campo('numeros', 'Número(s) que se juegan', x.numeros, { ph: '12345, 67890' }) +
+      A.campo('precio', 'Precio de cada participación (€)', A.decimalPunto(x.precioCent || 0).replace('.', ','), { attrs: ' inputmode="decimal"' }) +
+      A.campo('donativo', 'De ello, donativo para la entidad (€)', A.decimalPunto(x.donativoCent || 0).replace('.', ','), { attrs: ' inputmode="decimal"', ayuda: 'Por ejemplo, participación de 5 € que juega 4 €: donativo 1 €.' }) +
+      A.campo('porTalonario', 'Participaciones por talonario', x.porTalonario || 50, { tipo: 'number', attrs: ' min="1"' }) + '</div></fieldset>' +
+      A.campo('observaciones', 'Observaciones', x.observaciones, { tipo: 'textarea' }) + '</form>',
+      alAbrir: function (r) {
+        var ver = function () { var lot = A.$('select[name=tipo]', r).value === 'loteria'; A.$$('.no-loteria', r).forEach(function (e) { e.classList.toggle('oculto', lot); }); A.$$('.si-loteria', r).forEach(function (e) { e.classList.toggle('oculto', !lot); }); };
+        ver(); A.$('select[name=tipo]', r).addEventListener('change', ver);
+        A.$('#b-precio', r).addEventListener('click', function () { A.$('#precios', r).insertAdjacentHTML('beforeend', filaPrecio({ id: A.uid('p'), nombre: '', importeCent: 0 })); });
+        A.$('#precios', r).addEventListener('click', function (e) { if (e.target.closest('[data-quitar]')) e.target.closest('.fila-precio').remove(); });
+      },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-act', r));
+        var ps = A.$$('.fila-precio', r).map(function (el) {
+          return { id: el.getAttribute('data-id'), nombre: A.$('input[name=pn]', el).value.trim() || 'General', importeCent: A.aCentimos(A.$('input[name=pi]', el).value) || 0 };
+        });
+        if (f.tipo !== 'loteria' && !ps.length) throw new Error('Añade al menos un precio.');
+        var precio = A.aCentimos(f.precio) || 0, don = A.aCentimos(f.donativo) || 0;
+        if (f.tipo === 'loteria' && !(precio > 0)) throw new Error('Indica el precio de la participación.');
+        if (don > precio) throw new Error('El donativo no puede ser mayor que el precio.');
+        var g = A.guardarActividad(db, { id: a && a.id, nombre: f.nombre, tipo: f.tipo, fecha: f.fecha, fechaFin: f.fechaFin, lugar: f.lugar, plazas: f.plazas, observaciones: f.observaciones,
+          precios: f.tipo === 'loteria' ? [] : ps, numeros: f.numeros, precioCent: precio, donativoCent: don, porTalonario: f.porTalonario });
+        dialogoActividad.ultima = g.id; A.guardar();
+      } }] }).then(function (r) { if (r) A.ir('actividades?id=' + dialogoActividad.ultima); });
+  }
+
+  /* ---------- inscripciones ---------- */
+  function inscripciones(cont, db, a, v, params) {
+    var abierta = a.estado === 'abierta';
+    cont.innerHTML = '<div class="barra"><div class="crece">' + A.campo('texto', 'Buscar', fi.texto, { tipo: 'search', ph: 'Nombre, ' + v.numero.toLowerCase() + ' o detalle' }) + '</div>' +
+      '<div>' + A.campo('estado', 'Estado', fi.estado, { opciones: [['vigentes', 'Inscritos (sin anulados)'], ['debe', 'Con pagos pendientes'], ['pagada', 'Pagadas'], ['anulada', 'Anuladas'], ['', 'Todas']] }) + '</div>' +
+      '<div style="padding-bottom:12px"><button class="principal" data-inscribir' + (abierta ? '' : ' disabled') + '>' + A.icono('mas') + ' Inscribir</button></div></div><div id="lista-insc"></div>';
+    var lista = function () {
+      var t = A.normaliza(fi.texto);
+      var filas = A.listadoInscripciones(db, a.id, { estado: fi.estado }).filter(function (y) {
+        return !t || [A.nombreInscrito(db, y.x), y.m && y.m.numero, y.x.detalle].some(function (z) { return A.normaliza(z).indexOf(t) >= 0; });
+      });
+      var r = A.resumenActividad(db, a.id);
+      A.$('#lista-insc', cont).innerHTML = '<p class="gris" aria-live="polite">' + r.inscritos + ' inscritos' + (a.plazas ? ' de ' + a.plazas + ' plazas' : '') + ' · cobrado ' + A.euros(r.cobradoCent) + ' · pendiente ' + A.euros(r.pendienteCent) + '</p>' +
+        (filas.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Nombre</th><th>Detalle</th><th>Precio</th><th class="num">Importe</th><th>Estado</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        filas.slice(0, 500).map(function (y) {
+          var x = y.x, acc = (x.estado === 'pendiente' || x.estado === 'parcial') ? '<button class="mini" data-cobrar="' + x.id + '">Cobrar</button>' : '';
+          return '<tr class="clicable" data-insc="' + x.id + '" tabindex="0"><td>' + (y.m ? A.esc(y.m.numero) + ' · ' : '') + A.esc(A.nombreInscrito(db, x)) + '</td><td>' + A.esc(x.detalle) + '</td><td>' + A.esc(x.precioNombre) + '</td>' +
+            '<td class="num">' + A.euros(x.importeCent) + '</td><td>' + A.etiquetaInscripcion(x) + '</td><td><div class="fila-acciones">' + acc + '</div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">No hay inscripciones con estos filtros.</div>');
+    };
+    lista();
+    A.$('input[name=texto]', cont).addEventListener('input', A.debounce(function (e) { fi.texto = e.target.value; lista(); }, 150));
+    A.$('select[name=estado]', cont).addEventListener('change', function (e) { fi.estado = e.target.value; lista(); });
+    cont.addEventListener('click', function (e) {
+      var b;
+      if ((b = e.target.closest('[data-cobrar]'))) return dialogoCobro(db, b.getAttribute('data-cobrar'));
+      if (e.target.closest('[data-inscribir]')) return A.dialogoInscribir(db, a.id, null);
+      if ((b = e.target.closest('tr[data-insc]'))) return dialogoInscripcion(db, b.getAttribute('data-insc'));
+    });
+    if (params.inscribir && abierta) A.dialogoInscribir(db, a.id, params.inscribir);
+  }
+
+  A.dialogoInscribir = function (db, actividadId, miembroId) {
+    var a = A.actividadPorId(db, actividadId), v = A.vocab(db);
+    A.modal({ titulo: 'Inscribir en ' + a.nombre, html: '<form id="f-insc" novalidate>' +
+      A.campo('miembro', v.Miembro, miembroId || '', { opciones: [['', 'No es ' + v.miembro + ' (escribir nombre)']].concat(opcionesMiembros(db)) }) +
+      '<div class="columnas externo">' + A.campo('nombre', 'Nombre y apellidos', '') + A.campo('telefono', 'Teléfono', '') + '</div>' +
+      A.campo('detalle', 'Detalle (opcional)', '', { ph: db.entidad.perfil === 'ampa' ? 'Nombre del alumno y curso' : 'Talla, menú, acompañante…' }) +
+      '<div class="columnas">' + A.campo('precio', 'Precio', a.precios[0].id, { opciones: a.precios.map(function (p) { return [p.id, p.nombre + ' · ' + A.euros(p.importeCent)]; }) }) +
+      A.campo('importe', 'Importe (€)', A.decimalPunto(a.precios[0].importeCent).replace('.', ','), { attrs: ' inputmode="decimal"', ayuda: 'Se puede ajustar (descuento por hermanos, beca…).' }) +
+      A.campo('pago', 'Paga ahora (€)', '', { attrs: ' inputmode="decimal"', ayuda: 'Déjalo vacío si paga más tarde; puede pagar en varios plazos.' }) +
+      A.campo('forma', 'Forma de pago', 'efectivo', { opciones: A.opcionesCobro() }) + '</div><div id="avisos-insc" aria-live="polite"></div></form>',
+      alAbrir: function (r) {
+        var sel = A.$('select[name=miembro]', r), pr = A.$('select[name=precio]', r);
+        var avisos = function () {
+          A.$('.externo', r).classList.toggle('oculto', !!sel.value);
+          var av = A.avisosInscripcion(db, { actividadId: a.id, miembroId: sel.value, detalle: A.$('input[name=detalle]', r).value });
+          A.$('#avisos-insc', r).innerHTML = av.length ? '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>' + av.map(A.esc).join('<br>') + '</p></div></div>' : '';
+        };
+        sel.addEventListener('change', avisos); A.$('input[name=detalle]', r).addEventListener('input', A.debounce(avisos, 200)); avisos();
+        pr.addEventListener('change', function () { var p = a.precios.find(function (x) { return x.id === pr.value; }); A.$('input[name=importe]', r).value = A.decimalPunto(p.importeCent).replace('.', ','); });
+      },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Inscribir y otra', valor: 'otra', antes: guardar }, { texto: 'Inscribir', valor: true, clase: 'principal', antes: guardar }] })
+      .then(function (r) { if (r === 'otra') { A.pintar(); A.dialogoInscribir(db, actividadId, null); } else if (r) A.pintar(); });
+    function guardar(r) {
+      var f = A.leerForm(A.$('#f-insc', r));
+      A.inscribir(db, { actividadId: a.id, miembroId: f.miembro, nombre: f.nombre, telefono: f.telefono, detalle: f.detalle, precioId: f.precio,
+        importeCent: A.aCentimos(f.importe) || 0, pagoCent: A.aCentimos(f.pago) || 0, formaPago: f.forma });
+      A.guardar(); A.toast('Inscripción registrada.');
+    }
+  };
+
+  function dialogoCobro(db, id) {
+    var x = A.inscripcionPorId(db, id), pend = x.importeCent - (x.pagadoCent || 0);
+    A.modal({ titulo: 'Cobrar · ' + A.nombreInscrito(db, x), html: '<form id="f-cob" class="columnas" novalidate>' +
+      A.campo('importe', 'Importe (€)', A.decimalPunto(pend).replace('.', ','), { attrs: ' inputmode="decimal"', ayuda: 'Pendiente: ' + A.euros(pend) }) +
+      A.campo('forma', 'Forma de pago', 'efectivo', { opciones: A.opcionesCobro() }) + A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + '</form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Cobrar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-cob', r));
+        A.pagarInscripcion(db, id, { importeCent: A.aCentimos(f.importe), formaPago: f.forma, fecha: f.fecha }); A.guardar();
+      } }] }).then(function (r) { if (r) { A.toast('Cobro registrado.'); A.pintar(); } });
+  }
+
+  function dialogoInscripcion(db, id) {
+    var x = A.inscripcionPorId(db, id);
+    A.modal({ titulo: A.nombreInscrito(db, x), html: '<p>' + A.esc(x.precioNombre) + ' · ' + A.euros(x.importeCent) + ' · ' + A.etiquetaInscripcion(x) + (x.detalle ? ' · ' + A.esc(x.detalle) : '') + (x.telefono ? ' · ' + A.esc(x.telefono) : '') + '</p>' +
+      (x.pagos.length ? '<h3>Pagos</h3><ul class="lista-avisos">' + x.pagos.map(function (p) { return '<li>' + A.fechaES(p.fecha) + ' · ' + A.euros(p.importeCent) + ' · ' + A.esc(A.FORMAS_COBRO[p.formaPago] || p.formaPago) + '</li>'; }).join('') + '</ul>' : '') +
+      '<details class="historial"><summary>' + A.icono('historial', 18) + ' Historial</summary><ul class="lista-avisos">' + x.historial.map(function (h) { return '<li>' + A.fechaES(h.fecha.slice(0, 10)) + ' · ' + A.esc(h.texto) + '</li>'; }).join('') + '</ul></details>',
+      botones: [x.estado === 'anulada' ? { texto: 'Reactivar', valor: 'reabrir', izq: true } : { texto: 'Anular inscripción', valor: 'anular', clase: 'peligro', izq: true },
+        { texto: 'Cerrar', valor: false }].concat(x.estado === 'pendiente' || x.estado === 'parcial' ? [{ texto: 'Cobrar', valor: 'cobrar', clase: 'principal' }] : []) })
+      .then(function (r) {
+        if (r === 'cobrar') return dialogoCobro(db, id);
+        if (r === 'reabrir') { A.reabrirInscripcion(db, id); A.guardar(); A.pintar(); }
+        if (r === 'anular') A.confirmar('Anular inscripción', (x.pagadoCent ? 'Tiene ' + A.euros(x.pagadoCent) + ' pagados: si los devolvéis, anótalo en observaciones. ' : '') + 'La plaza queda libre.', 'Anular', true).then(function (ok) {
+          if (ok) { A.anularInscripcion(db, id); A.guardar(); A.pintar(); }
+        });
+      });
+  }
+
+  function resumen(cont, db, a, v) {
+    var r = A.resumenActividad(db, a.id);
+    cont.innerHTML = '<div class="rejilla">' + A.kpi(r.inscritos + (a.plazas ? ' / ' + a.plazas : ''), 'Inscritos') + A.kpi(A.euros(r.cobradoCent), 'Cobrado') +
+      A.kpi(A.euros(r.pendienteCent), 'Pendiente (' + r.deben + ')') + A.kpi(A.euros(r.totalCent), 'Total previsto') + '</div>' +
+      '<section class="tarjeta"><h2>Por precio</h2><ul class="lista-avisos">' + Object.keys(r.porPrecio).map(function (k) { return '<li>' + A.esc(k) + ': ' + r.porPrecio[k] + '</li>'; }).join('') + '</ul></section>' +
+      '<section class="tarjeta"><h2>Imprimir y exportar</h2><div class="fila-acciones"><button data-l="lista">Lista de inscritos (para pasar lista)</button><button data-l="deben">Pagos pendientes</button><button data-l="csv">Exportar CSV</button></div></section>';
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-l]'); if (!b) return;
+      var l = b.getAttribute('data-l'), filas = A.listadoInscripciones(db, a.id, { estado: l === 'deben' ? 'debe' : 'vigentes' });
+      var cab = ['Nombre', 'Detalle', 'Teléfono', 'Precio', 'Importe', 'Pagado', l === 'lista' ? 'Asiste' : 'Pendiente'];
+      var datos = filas.map(function (y) {
+        var tel = y.m ? y.m.telefono : y.x.telefono;
+        return [(y.m ? y.m.numero + ' · ' : '') + A.nombreInscrito(db, y.x), y.x.detalle, tel, y.x.precioNombre, A.euros(y.x.importeCent), A.euros(y.x.pagadoCent || 0),
+          l === 'lista' ? '☐' : A.euros(y.x.importeCent - (y.x.pagadoCent || 0))];
+      });
+      if (l === 'csv') return A.descargar(A.nombreFichero(a.nombre) + '.csv', A.aCSV(cab.slice(0, 6).concat(['Estado']), filas.map(function (y) {
+        return [A.nombreInscrito(db, y.x), y.x.detalle, y.m ? y.m.telefono : y.x.telefono, y.x.precioNombre, A.decimalPunto(y.x.importeCent).replace('.', ','), A.decimalPunto(y.x.pagadoCent || 0).replace('.', ','), A.ESTADOS_INSCRIPCION[y.x.estado]];
+      })), 'text/csv;charset=utf-8');
+      A.imprimir((l === 'lista' ? 'Inscritos · ' : 'Pagos pendientes · ') + a.nombre, A.tablaImpresion(cab, datos) + '<p>Total: ' + filas.length + '</p>');
+    });
+  }
+
+  /* ---------- lotería ---------- */
+  function talonarios(cont, db, a, v) {
+    var ts = A.talonariosDe(db, a.id).slice().sort(function (x, y) { return A.comparaTexto(x.numero, y.numero); }), abierta = a.estado === 'abierta';
+    cont.innerHTML = '<div class="barra"><div class="crece"><p class="gris">Entrega cada talonario a quien lo vaya a vender y liquídalo cuando devuelva el dinero y las participaciones sin vender.</p></div>' +
+      '<div style="padding-bottom:12px"><button class="principal" data-entregar' + (abierta ? '' : ' disabled') + '>' + A.icono('mas') + ' Entregar talonario</button></div></div>' +
+      (ts.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Talonario</th><th>Responsable</th><th class="num">Particip.</th><th>Entregado</th><th class="num">Vendidas</th><th class="num">Importe</th><th>Estado</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        ts.map(function (t) {
+          var m = A.miembroPorId(db, t.miembroId), liq = t.estado === 'liquidado';
+          return '<tr><td class="mono">' + A.esc(t.numero) + '</td><td>' + (m ? A.esc(m.numero + ' · ' + A.nombreOrden(m)) : '<span class="gris">Datos suprimidos</span>') + '</td><td class="num">' + t.participaciones + '</td>' +
+            '<td>' + A.fechaES(t.fechaEntrega) + '</td><td class="num">' + (liq ? t.vendidas : '—') + '</td><td class="num">' + (liq ? A.euros(t.liquidadoCent) : A.euros(t.participaciones * a.precioCent) + ' <span class="gris">máx.</span>') + '</td>' +
+            '<td>' + (liq ? A.etiquetaEstado('Liquidado ' + A.fechaES(t.fechaLiquidacion), 'ok') : A.etiquetaEstado('Por liquidar', 'aviso')) + '</td><td><div class="fila-acciones">' +
+            (liq ? '<button class="mini" data-reabrir-t="' + t.id + '">Corregir</button>' : '<button class="mini" data-liquidar="' + t.id + '">Liquidar</button><button class="mini" data-borrar-t="' + t.id + '">Quitar</button>') + '</div></td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">Todavía no se ha entregado ningún talonario.</div>');
+    cont.addEventListener('click', function (e) {
+      var b;
+      if (e.target.closest('[data-entregar]')) return dialogoTalonario(db, a);
+      if ((b = e.target.closest('[data-liquidar]'))) return dialogoLiquidar(db, a, b.getAttribute('data-liquidar'));
+      if ((b = e.target.closest('[data-reabrir-t]'))) { A.reabrirTalonario(db, b.getAttribute('data-reabrir-t')); A.guardar(); return A.pintar(); }
+      if ((b = e.target.closest('[data-borrar-t]'))) { try { A.borrarTalonario(db, b.getAttribute('data-borrar-t')); A.guardar(); } catch (err) { A.toast(err.message, 'mal'); } return A.pintar(); }
+    });
+  }
+  function dialogoTalonario(db, a) {
+    var sig = A.talonariosDe(db, a.id).length + 1;
+    A.modal({ titulo: 'Entregar talonario', html: '<form id="f-tal" novalidate>' + A.campo('miembro', 'Responsable', '', { opciones: [['', 'Elige…']].concat(opcionesMiembros(db)) }) +
+      '<div class="columnas">' + A.campo('numero', 'Número o serie del talonario', String(sig)) + A.campo('participaciones', 'Participaciones', a.porTalonario, { tipo: 'number', attrs: ' min="1"' }) +
+      A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + '</div></form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Entregar y otro', valor: 'otro', antes: guardar }, { texto: 'Entregar', valor: true, clase: 'principal', antes: guardar }] })
+      .then(function (r) { A.pintar(); if (r === 'otro') dialogoTalonario(db, a); });
+    function guardar(r) { var f = A.leerForm(A.$('#f-tal', r)); A.entregarTalonario(db, { actividadId: a.id, miembroId: f.miembro, numero: f.numero, participaciones: f.participaciones, fecha: f.fecha }); A.guardar(); }
+  }
+  function dialogoLiquidar(db, a, id) {
+    var t = db.talonarios.find(function (x) { return x.id === id; });
+    A.modal({ titulo: 'Liquidar talonario ' + t.numero, html: '<form id="f-liq" novalidate><div class="columnas">' +
+      A.campo('vendidas', 'Participaciones vendidas', t.participaciones, { tipo: 'number', attrs: ' min="0" max="' + t.participaciones + '"' }) +
+      A.campo('devueltas', 'Devueltas sin vender', 0, { tipo: 'number', attrs: ' min="0" max="' + t.participaciones + '"' }) +
+      A.campo('forma', 'Forma de pago', 'efectivo', { opciones: A.opcionesCobro() }) + A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + '</div>' +
+      '<p class="importe-liq" aria-live="polite"></p></form>',
+      alAbrir: function (r) {
+        var ve = A.$('input[name=vendidas]', r), de = A.$('input[name=devueltas]', r);
+        var calc = function (src) { if (src === ve) de.value = Math.max(0, t.participaciones - (+ve.value || 0)); else ve.value = Math.max(0, t.participaciones - (+de.value || 0));
+          A.$('.importe-liq', r).innerHTML = 'Debe entregar <strong>' + A.euros((+ve.value || 0) * a.precioCent) + '</strong>'; };
+        ve.addEventListener('input', function () { calc(ve); }); de.addEventListener('input', function () { calc(de); }); calc(ve);
+      },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Liquidar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-liq', r)); A.liquidarTalonario(db, id, { vendidas: f.vendidas, devueltas: f.devueltas, formaPago: f.forma, fecha: f.fecha }); A.guardar();
+      } }] }).then(function (r) { if (r) { A.toast('Talonario liquidado.'); A.pintar(); } });
+  }
+  function resumenLoteria(cont, db, a) {
+    var r = A.resumenLoteria(db, a.id);
+    cont.innerHTML = '<div class="rejilla">' + A.kpi(r.talonarios, 'Talonarios entregados') + A.kpi(r.vendidas + ' / ' + r.entregadas, 'Participaciones vendidas') +
+      A.kpi(A.euros(r.recaudadoCent), 'Recaudado') + A.kpi(A.euros(r.donativoCent), 'Para la entidad (donativo)') + A.kpi(A.euros(r.juegaCent), 'Se juega') +
+      A.kpi(r.pendientesLiquidar, 'Talonarios por liquidar') + '</div>' +
+      '<section class="tarjeta"><h2>Imprimir</h2><button data-l="liq">Estado de los talonarios</button></section>';
+    cont.addEventListener('click', function (e) {
+      if (!e.target.closest('[data-l]')) return;
+      var ts = A.talonariosDe(db, a.id);
+      A.imprimir('Lotería · ' + a.nombre, '<p>Número' + (/[,;\s]/.test(a.numeros || '') ? 's' : '') + ': ' + A.esc(a.numeros || '') + ' · Participación: ' + A.euros(a.precioCent) + '</p>' +
+        A.tablaImpresion(['Talonario', 'Responsable', 'Teléfono', 'Particip.', 'Vendidas', 'Devueltas', 'Importe', 'Estado'], ts.map(function (t) {
+          var m = A.miembroPorId(db, t.miembroId), liq = t.estado === 'liquidado';
+          return [t.numero, m ? m.numero + ' · ' + A.nombreOrden(m) : 'Datos suprimidos', m ? m.telefono : '', t.participaciones, liq ? t.vendidas : '', liq ? t.devueltas : '', liq ? A.euros(t.liquidadoCent) : '', liq ? 'Liquidado' : 'Por liquidar'];
+        })) + '<p>Recaudado: ' + A.euros(r.recaudadoCent) + ' · Pendiente de liquidar: ' + r.pendientesLiquidar + ' talonarios (' + A.euros(r.pendienteCent) + ' como máximo)</p>');
+    });
+  }
+})(A);
+
 /* Alcancía · arranque, estructura de la aplicación y bloqueo automático */
 'use strict';
 (function (A) {
-  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'],
+  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'], ['actividades', 'Actividades', 'calendario'], ['enseres', null, 'percha'], ['donativos', 'Donativos', 'corazon'],
     ['comunicaciones', 'Comunicaciones', 'correo'], ['listados', 'Listados', 'imprimir'], ['rgpd', 'Protección de datos', 'escudo'],
     ['datos', 'Datos y copias', 'disco'], ['configuracion', 'Configuración', 'ajustes'], ['ayuda', 'Ayuda', 'ayuda']];
+
+  /* Secciones que dependen del perfil o de la configuración */
+  function visible(ruta, v) {
+    if (ruta === 'salidas') return !!v.salidas;
+    if (ruta === 'enseres') return A.usaEnseres(A.S.db);
+    if (ruta === 'donativos') return A.usaDonativos(A.S.db);
+    return true;
+  }
+  A.nombreEnseres = function (db) { return db.entidad.perfil === 'hermandad' ? 'Enseres' : 'Material'; };
 
   A.pintarCabecera = function () {
     var cab = A.$('.cabecera .entidad'); if (cab && A.S.db) cab.textContent = A.S.db.entidad.nombre;
@@ -3012,7 +4236,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       return;
     }
     var v = A.vocab(A.S.db), r = A.rutaActual();
-    if (!A.rutas[r.ruta] || (r.ruta === 'salidas' && !v.salidas)) r.ruta = 'panel';
+    if (!A.rutas[r.ruta] || !visible(r.ruta, v)) r.ruta = 'panel';
     if (!A.$('.app', raiz)) {
       raiz.innerHTML = '<div class="app"><header class="cabecera"><a class="marca" href="#/panel">' + A.MARCA.logo + '</a>' +
         '<span class="entidad"></span><span class="espacio"></span><span class="estado-guardado" aria-live="polite"></span>' +
@@ -3020,12 +4244,12 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         '<aside class="lateral"><nav aria-label="Secciones"></nav></aside><main class="contenido-app" id="contenido-principal" tabindex="-1"></main></div>';
       A.$('#b-bloquear', raiz).addEventListener('click', function () { A.bloquearSesion(); });
     }
-    A.$('.lateral nav', raiz).innerHTML = MENU.filter(function (m) { return m[0] !== 'salidas' || v.salidas; }).map(function (m) {
-      return '<a href="#/' + m[0] + '"' + (r.ruta === m[0] ? ' aria-current="page"' : '') + '>' + A.icono(m[2]) + (m[1] || v.Miembros) + '</a>';
+    A.$('.lateral nav', raiz).innerHTML = MENU.filter(function (m) { return visible(m[0], v); }).map(function (m) {
+      return '<a href="#/' + m[0] + '"' + (r.ruta === m[0] ? ' aria-current="page"' : '') + '>' + A.icono(m[2]) + (m[1] || (m[0] === 'enseres' ? A.nombreEnseres(A.S.db) : v.Miembros)) + '</a>';
     }).join('');
     var viejo = A.$('#contenido-principal', raiz), nuevo = viejo.cloneNode(false); // contenedor limpio, sin escuchadores previos
     viejo.replaceWith(nuevo);
-    var titulo = (MENU.find(function (m) { return m[0] === r.ruta; }) || [])[1] || v.Miembros;
+    var titulo = (MENU.find(function (m) { return m[0] === r.ruta; }) || [])[1] || (r.ruta === 'enseres' ? A.nombreEnseres(A.S.db) : v.Miembros);
     document.title = titulo + ' · ' + A.APP.nombre;
     A.rutas[r.ruta](nuevo, r.params);
     nuevo.addEventListener('click', function (e) { var b = e.target.closest('[data-ir]'); if (b) A.ir(b.getAttribute('data-ir')); });
