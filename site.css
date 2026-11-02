@@ -120,3 +120,12 @@ code, .dato { font-family: var(--f-dato); font-size: .92em; background: var(--az
 @media (max-width: 640px) { .autor { grid-template-columns: 1fr; gap: 20px; } .autor-marca { max-width: 110px; } }
 .pie a { color: inherit; }
 .nota-demo { color: var(--tinta-2); font-size: .92rem; margin-top: 12px; }
+
+/* descargas */
+.caja-descarga { display: grid; grid-template-columns: 1.4fr 1fr; gap: 28px; align-items: center; background: var(--azul-suave); border-radius: 14px; padding: 28px; margin: 8px 0 18px; }
+.caja-descarga > * { min-width: 0; }
+.caja-descarga h2 { margin-top: 0; }
+.datos-descarga { list-style: none; margin: 0; padding: 0; font-size: .95rem; }
+.datos-descarga li { padding: 8px 0; border-bottom: 1px solid var(--linea); display: grid; grid-template-columns: 96px 1fr; gap: 8px; }
+.datos-descarga strong { color: var(--tinta-2); font-weight: 600; }
+@media (max-width: 720px) { .caja-descarga { grid-template-columns: 1fr; padding: 20px; } }
