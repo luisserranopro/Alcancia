@@ -224,6 +224,24 @@ button.enlace { background: none; border: 0; padding: 0; min-height: 0; color: v
 select, input, textarea { max-width: 100%; }
 .app { overflow-x: clip; }
 .tabla-envoltorio { position: relative; }
+
+/* escudo de la entidad */
+.cabecera .entidad { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cabecera .entidad span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.escudo-cabecera { height: 28px; width: auto; max-width: 48px; object-fit: contain; flex: none; }
+.bloque-escudo { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.bloque-escudo > div { min-width: 0; }
+.vista-escudo { width: 120px; height: 120px; border: 1px dashed var(--borde); border-radius: var(--radio); display: grid; place-items: center; background: var(--superficie-2); flex: none; }
+.vista-escudo img { max-width: 104px; max-height: 104px; object-fit: contain; }
+#imprimir .cab-impresion { display: flex; align-items: center; gap: 6mm; margin-bottom: 4mm; }
+#imprimir .cab-impresion h1 { margin: 0 0 1mm; }
+#imprimir .cab-impresion p { margin: 0; }
+#imprimir .escudo-impresion { height: 22mm; width: auto; max-width: 30mm; object-fit: contain; }
+#imprimir .cab-certificado { display: flex; align-items: center; gap: 5mm; margin-bottom: 6mm; font-size: 12pt; }
+#imprimir .escudo-mini { height: 9mm; width: auto; max-width: 14mm; object-fit: contain; vertical-align: middle; margin-right: 2mm; }
+#imprimir .carne-cab { display: flex; align-items: center; }
+#imprimir .ts-ent { display: flex; align-items: center; }
+@media (max-width: 860px) { .cabecera .entidad { display: none; } }
 </style>
 </head>
 <body>
@@ -241,7 +259,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.4.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.4.1', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -2088,10 +2106,39 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.ir = function (ruta) { if (location.hash === '#/' + ruta) A.pintar(); else location.hash = '#/' + ruta; };
 
   /* Impresión: pinta en #imprimir y llama al diálogo del navegador */
+  /* Escudo o logotipo de la entidad (imagen guardada dentro de los datos cifrados) */
+  A.escudo = function (clase) {
+    var e = A.S.db && A.S.db.entidad;
+    return e && e.logo ? '<img class="' + (clase || 'escudo') + '" src="' + A.esc(e.logo) + '" alt="">' : '';
+  };
+  /* Reduce la imagen elegida a 400 px como máximo y la devuelve como data URL (PNG para conservar la transparencia) */
+  A.prepararEscudo = function (fichero) {
+    return new Promise(function (ok, ko) {
+      if (!fichero) return ko(new Error('Elige una imagen.'));
+      if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(fichero.type)) return ko(new Error('El escudo debe ser una imagen PNG, JPG, WebP o SVG.'));
+      if (fichero.size > 8 * 1024 * 1024) return ko(new Error('La imagen pesa demasiado (máximo 8 MB).'));
+      var lector = new FileReader();
+      lector.onerror = function () { ko(new Error('No se pudo leer la imagen.')); };
+      lector.onload = function () {
+        var img = new Image();
+        img.onerror = function () { ko(new Error('La imagen no se puede abrir.')); };
+        img.onload = function () {
+          var MAX = 400, w = img.naturalWidth || MAX, h = img.naturalHeight || MAX, k = Math.min(1, MAX / Math.max(w, h));
+          var cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * k)); cv.height = Math.max(1, Math.round(h * k));
+          cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+          var png = cv.toDataURL('image/png');
+          ok(png.length > 350000 ? cv.toDataURL('image/webp', 0.9) : png);
+        };
+        img.src = lector.result;
+      };
+      lector.readAsDataURL(fichero);
+    });
+  };
+
   A.imprimir = function (titulo, html) {
     var c = A.$('#imprimir');
     var e = A.S.db ? A.S.db.entidad : {};
-    c.innerHTML = '<h1>' + A.esc(titulo) + '</h1><p>' + A.esc(e.nombre || '') + (e.nif ? ' · NIF ' + A.esc(e.nif) : '') + ' · Emitido el ' + A.fechaES(A.hoyISO()) + '</p>' + html +
+    c.innerHTML = '<div class="cab-impresion">' + A.escudo('escudo-impresion') + '<div><h1>' + A.esc(titulo) + '</h1><p>' + A.esc(e.nombre || '') + (e.nif ? ' · NIF ' + A.esc(e.nif) : '') + ' · Emitido el ' + A.fechaES(A.hoyISO()) + '</p></div></div>' + html +
       '<p class="aviso-impresion">Documento con datos personales. Custódialo de forma segura y destrúyelo cuando ya no sea necesario.</p>';
     window.print();
   };
@@ -2361,8 +2408,19 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var nombres = { asociacion: 'Asociación Juvenil Albaicín Activo', hermandad: 'Hermandad de Ejemplo de San Gregorio', ampa: 'AMPA Colegio Los Almendros', club: 'Club Deportivo Sierra Elvira' };
     return { nombre: nombres[perfil], perfil: perfil, nif: 'G18123455', direccion: 'C/ Ejemplo, 1', cp: '18010', localidad: 'Granada', provincia: 'Granada', email: 'secretaria@ejemplo.org' };
   };
+  /* Escudo inventado para las entidades de ejemplo: un blasón con las iniciales */
+  A.escudoEjemplo = function (nombre, perfil) {
+    var col = { hermandad: ['#5b2a6e', '#d9a520'], club: ['#1f5f8b', '#f2f2f2'], ampa: ['#2f7d4f', '#f6d55c'], asociacion: ['#a8432a', '#f3d9a4'] }[perfil] || ['#444', '#eee'];
+    var ini = String(nombre || '').split(/\s+/).filter(function (w) { return w.length > 3 && /^[A-ZÁÉÍÓÚÑ]/.test(w); }).slice(-2).map(function (w) { return w[0]; }).join('') || 'E';
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120"><path d="M8 8h84v46c0 32-22 50-42 60C30 104 8 86 8 54Z" fill="' + col[0] + '" stroke="' + col[1] + '" stroke-width="5"/>' +
+      '<path d="M8 46h84" stroke="' + col[1] + '" stroke-width="3" opacity=".6"/><text x="50" y="86" text-anchor="middle" font-family="Georgia,serif" font-size="34" font-weight="bold" fill="' + col[1] + '">' + ini + '</text>' +
+      '<circle cx="50" cy="28" r="9" fill="none" stroke="' + col[1] + '" stroke-width="4"/></svg>';
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  };
+
   A.rellenarEjemplo = function (db) {
     db.ejemplo = true;
+    db.entidad.logo = A.escudoEjemplo(db.entidad.nombre, db.entidad.perfil);
     var semilla = 7; function rnd() { semilla = (semilla * 16807) % 2147483647; return (semilla - 1) / 2147483646; }
     function elige(l) { return l[Math.floor(rnd() * l.length)]; }
     var nom = ['Lucía', 'Hugo', 'Martina', 'Mateo', 'Sofía', 'Leo', 'Julia', 'Daniel', 'Paula', 'Álvaro', 'Carmen', 'Manuel', 'Rocío', 'Antonio', 'Elena', 'José', 'Inés', 'Pablo', 'Marta', 'Javier', 'Alba', 'Rafael', 'Noelia', 'Francisco'];
@@ -3057,7 +3115,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         return [p, cs.length, suma(function (x) { return x.estado === 'pagado'; }), suma(function (x) { return ['pendiente', 'devuelto', 'remesado'].indexOf(x.estado) >= 0; }), suma(function (x) { return x.estado === 'anulado'; })];
       })));
       if (k === 'carnes') A.imprimir('Carnés', '<div class="carnes">' + activos.map(function (m) {
-        return '<div class="carne"><div><strong>' + A.esc(db.entidad.nombre) + '</strong></div><div style="font-size:14pt"><strong>' + A.esc(A.nombreCompleto(m)) + '</strong></div><div>' + v.numero + ': <strong>' + A.esc(m.numero) + '</strong>' +
+        return '<div class="carne"><div class="carne-cab">' + A.escudo('escudo-mini') + '<strong>' + A.esc(db.entidad.nombre) + '</strong></div><div style="font-size:14pt"><strong>' + A.esc(A.nombreCompleto(m)) + '</strong></div><div>' + v.numero + ': <strong>' + A.esc(m.numero) + '</strong>' +
           (v.antiguedad ? ' · Desde ' + A.esc((m.fechaAlta || '').slice(0, 4)) : '') + '</div><div style="font-size:8pt">Temporada ' + A.hoyISO().slice(0, 4) + '</div></div>';
       }).join('') + '</div>');
     });
@@ -3190,6 +3248,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       A.campo('perfil', 'Tipo de entidad', e.perfil, { opciones: Object.keys(A.PERFILES).map(function (k) { return [k, A.PERFILES[k].etiqueta]; }), ayuda: 'Cambia el vocabulario de la aplicación.' }) +
       A.campo('nif', 'NIF', e.nif) + A.campo('email', 'Email de contacto', e.email, { tipo: 'email' }) + A.campo('telefono', 'Teléfono', e.telefono) +
       A.campo('direccion', 'Dirección', e.direccion) + A.campo('cp', 'Código postal', e.cp) + A.campo('localidad', 'Localidad', e.localidad) + A.campo('provincia', 'Provincia', e.provincia) + '</div></fieldset>' +
+      '<fieldset><legend>Escudo o logotipo</legend><div class="bloque-escudo"><div class="vista-escudo" id="vista-escudo">' + (e.logo ? '<img src="' + A.esc(e.logo) + '" alt="Escudo actual">' : '<span class="gris">Sin escudo</span>') + '</div>' +
+      '<div>' + A.campo('fichEscudo', 'Imagen del escudo o logotipo', '', { tipo: 'file', attrs: ' accept="image/png,image/jpeg,image/webp,image/svg+xml"',
+        ayuda: 'Aparece en los papeles que se imprimen (listados, certificados, recibos, tarjetas de sitio, carnés) y en la cabecera. Mejor en PNG con fondo transparente. Se reduce a 400 píxeles y se guarda cifrado con los datos.' }) +
+      '<button type="button" class="mini" id="b-quitar-escudo"' + (e.logo ? '' : ' hidden') + '>Quitar el escudo</button></div></div></fieldset>' +
       '<fieldset><legend>Datos para las remesas SEPA</legend><p class="gris">Los facilita el banco de la entidad al contratar el servicio de adeudos directos.</p><div class="columnas">' +
       A.campo('sNombre', 'Nombre del acreedor', s.nombre || e.nombre) + A.campo('sIban', 'IBAN de la cuenta de cobro', A.formateaIBAN(s.iban)) +
       A.campo('sBic', 'BIC (opcional)', s.bic) + A.campo('sSufijo', 'Sufijo', s.sufijo || '000', { ayuda: 'Normalmente 000. Lo indica el banco.' }) +
@@ -3211,7 +3273,15 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       '<div class="columnas">' + A.campo('naturaleza', 'Naturaleza del declarante', fi.naturaleza, { opciones: A.NATURALEZAS_DECLARANTE }) +
       A.campo('contacto', 'Persona de contacto con Hacienda (apellidos y nombre)', fi.contacto) + A.campo('telContacto', 'Teléfono de contacto', fi.telefono, { attrs: ' inputmode="tel"' }) + '</div></fieldset>' +
       '<div id="err-conf" aria-live="polite"></div><button class="principal" type="submit">Guardar configuración</button></form>';
-    var form = A.$('#f-conf', c);
+    var form = A.$('#f-conf', c), logoNuevo = e.logo || '';
+    var verEscudo = function () {
+      A.$('#vista-escudo', c).innerHTML = logoNuevo ? '<img src="' + A.esc(logoNuevo) + '" alt="Escudo elegido">' : '<span class="gris">Sin escudo</span>';
+      A.$('#b-quitar-escudo', c).hidden = !logoNuevo;
+    };
+    A.$('input[name=fichEscudo]', form).addEventListener('change', function (ev) {
+      A.prepararEscudo(ev.target.files[0]).then(function (url) { logoNuevo = url; verEscudo(); A.toast('Escudo listo: pulsa «Guardar configuración».'); }, function (err) { ev.target.value = ''; A.toast(err.message, 'mal'); });
+    });
+    A.$('#b-quitar-escudo', c).addEventListener('click', function () { logoNuevo = ''; A.$('input[name=fichEscudo]', form).value = ''; verEscudo(); });
     A.$('select[name=perfil]', form).addEventListener('change', function (ev) { A.$('#bloque-cabildos', c).classList.toggle('oculto', ev.target.value !== 'hermandad'); });
     A.$('#calc-ci', c).addEventListener('click', function () {
       var f = A.leerForm(form);
@@ -3228,7 +3298,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       if (f.sIdent && !A.validaIdentificadorAcreedor(f.sIdent)) errs.push('El identificador de acreedor no es válido.');
       A.$('#err-conf', c).innerHTML = errs.length ? '<div class="aviso mal">' + A.icono('aviso', 20) + '<div><p>' + errs.join('<br>') + '</p></div></div>' : '';
       if (errs.length && !f.nombre) return;
-      Object.assign(db.entidad, { nombre: f.nombre, perfil: f.perfil, nif: A.limpiaDoc(f.nif), email: f.email, telefono: f.telefono, direccion: f.direccion, cp: f.cp, localidad: f.localidad, provincia: f.provincia });
+      if ((db.entidad.logo || '') !== logoNuevo) A.log(db, logoNuevo ? 'Escudo de la entidad actualizado' : 'Escudo de la entidad quitado');
+      Object.assign(db.entidad, { nombre: f.nombre, perfil: f.perfil, nif: A.limpiaDoc(f.nif), email: f.email, telefono: f.telefono, direccion: f.direccion, cp: f.cp, localidad: f.localidad, provincia: f.provincia, logo: logoNuevo });
       Object.assign(db.sepa, { nombre: f.sNombre, iban: A.limpiaIBAN(f.sIban), bic: f.sBic.toUpperCase(), sufijo: f.sSufijo || '000', identificador: A.limpiaDoc(f.sIdent) });
       if (f.condicionCofrade !== db.ajustes.condicionCofrade) A.log(db, (f.condicionCofrade ? 'Activada' : 'Desactivada') + ' la distinción entre cofrades activos y asociados');
       Object.assign(db.ajustes, { bloqueoMin: Math.max(1, +f.bloqueoMin || 15), recordatorioCopiaDias: Math.max(1, +f.recordatorio || 7), conservarBajasAnios: Math.max(1, +f.conservar || 5),
@@ -3251,7 +3322,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var db = A.S.db, v = A.vocab(db);
     var bloque = function (t, html) { return '<section class="tarjeta"><h2>' + t + '</h2>' + html + '</section>'; };
     c.innerHTML = '<div class="titulo-pagina"><h1>Ayuda</h1></div>' +
-      bloque('Primeros pasos', '<ol><li>En <a href="#/configuracion">Configuración</a>, completa los datos de la entidad y los bancarios.</li><li>En <a href="#/cuotas?pestana=tipos">Cuotas › Tipos</a>, crea las cuotas que cobráis.</li>' +
+      bloque('Primeros pasos', '<ol><li>En <a href="#/configuracion">Configuración</a>, sube el escudo o logotipo (saldrá en los impresos) y completa los datos de la entidad y los bancarios.</li><li>En <a href="#/cuotas?pestana=tipos">Cuotas › Tipos</a>, crea las cuotas que cobráis.</li>' +
         '<li>Da de alta a los ' + v.miembros + ' o impórtalos desde vuestra hoja de cálculo.</li><li>Cada periodo, genera las cuotas y crea la remesa para el banco.</li><li>Descarga una copia de seguridad cada semana.</li></ol>') +
       bloque('¿Dónde están mis datos?', '<p>Solo en este equipo, cifrados con vuestra contraseña: en el navegador y, si lo activas, en un fichero de vuestra elección. ' + A.APP.nombre + ' no tiene servidor ni recibe datos. Si borras el navegador sin copia, los datos se pierden.</p>') +
       bloque('Actividades y lotería', '<p>En <a href="#/actividades">Actividades</a> crea la excursión, comida o campamento con sus precios y plazas, inscribe a ' + v.miembros + ' o a personas de fuera y registra los pagos, también a plazos. Para la lotería, crea una actividad de tipo «Lotería», entrega los talonarios a cada responsable y liquídalos cuando devuelvan el dinero.</p>') +
@@ -3586,7 +3657,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var v = A.vocab(db), e = db.entidad;
     A.imprimir('Tarjetas de sitio · ' + s.nombre, '<div class="tarjetas-sitio">' + tarjetas.map(function (t) {
       var m = A.miembroPorId(db, t.miembroId);
-      return '<div class="tarjeta-sitio"><div class="ts-cab"><strong>' + A.esc(e.nombre) + '</strong><span>Nº ' + t.numero + '</span></div>' +
+      return '<div class="tarjeta-sitio"><div class="ts-cab"><strong class="ts-ent">' + A.escudo('escudo-mini') + A.esc(e.nombre) + '</strong><span>Nº ' + t.numero + '</span></div>' +
         '<div class="ts-salida">' + A.esc(s.nombre) + ' · ' + A.fechaES(s.fecha) + '</div>' +
         '<div class="ts-nombre">' + (m ? A.esc(A.nombreCompleto(m)) : '—') + '</div>' +
         '<div>' + v.numero + ': <strong>' + (m ? A.esc(m.numero) : '—') + '</strong></div>' +
@@ -3676,10 +3747,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   /* Certificados (art. 24 Ley 49/2002): uno por página */
   A.imprimirCertificados = function (db, anio, ids) {
     var e = db.entidad, v = A.vocab(db);
-    var html = ids.map(function (id) {
+    var html = ids.map(function (id, i) {
       var k = A.certificadoDonativos(db, id, anio); if (!k || !k.totalCent) return '';
       var m = k.m;
-      return '<div class="certificado"><h2>Certificado de donativos · ejercicio ' + anio + '</h2>' +
+      return '<div class="certificado">' + (i ? '<div class="cab-certificado">' + A.escudo('escudo-impresion') + '<strong>' + A.esc(e.nombre) + '</strong></div>' : '') + '<h2>Certificado de donativos · ejercicio ' + anio + '</h2>' +
         '<p><strong>' + A.esc(e.nombre) + '</strong>, con NIF ' + A.esc(e.nif) + (e.direccion ? ' y domicilio en ' + A.esc([e.direccion, e.cp, e.localidad].filter(Boolean).join(', ')) : '') + ',</p>' +
         '<p><strong>CERTIFICA</strong> que es una de las entidades beneficiarias del mecenazgo a las que se refiere el artículo 16 de la Ley 49/2002, de 23 de diciembre, de régimen fiscal de las entidades sin fines lucrativos y de los incentivos fiscales al mecenazgo, ' +
         'y que durante el año ' + anio + ' ha recibido de:</p>' +
@@ -4220,7 +4291,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.nombreEnseres = function (db) { return db.entidad.perfil === 'hermandad' ? 'Enseres' : 'Material'; };
 
   A.pintarCabecera = function () {
-    var cab = A.$('.cabecera .entidad'); if (cab && A.S.db) cab.textContent = A.S.db.entidad.nombre;
+    var cab = A.$('.cabecera .entidad'); if (cab && A.S.db) cab.innerHTML = A.escudo('escudo-cabecera') + '<span>' + A.esc(A.S.db.entidad.nombre) + '</span>';
     var est = A.$('.estado-guardado'); if (!est || !A.S.db) return;
     var aviso = A.S.estadoFichero === 'pendiente-permiso';
     est.innerHTML = '<span class="punto' + (aviso ? ' aviso' : '') + '"></span><span class="texto-estado">' + (A.S.guardando ? 'Guardando…' : aviso ? 'Guardado en el navegador' : 'Guardado y cifrado') + '</span>';
