@@ -1,10 +1,11 @@
 {
- "version": "0.5.1",
+ "version": "0.6.0",
  "fecha": "2026-11-03",
  "novedades": [
-  "Errores explicados con claridad e informe para soporte sin datos personales",
-  "Comprobación y reparación de los datos, también antes de cada copia",
-  "Buscar actualizaciones desde Ayuda"
+  "Tesorería: libro de caja con los cobros ya apuntados, gastos por partidas y traspasos",
+  "Presupuesto y estado de cuentas para la asamblea, en papel y en Excel",
+  "Comprobar el saldo con el extracto del banco o el dinero de la caja",
+  "Primeros pasos en el panel para empezar con buen pie"
  ],
  "descarga": "https://github.com/luisserranopro/Alcancia/releases/latest/download/alcancia.html"
 }

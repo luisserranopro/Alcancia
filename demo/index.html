@@ -133,7 +133,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .aviso p:last-child { margin: 0; }
 
 .pestanas { display: flex; gap: 4px; border-bottom: 1px solid var(--borde); margin-bottom: 16px; overflow-x: auto; }
-.pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; }
+.pestanas button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; white-space: nowrap; flex: none; }
 .pestanas button[aria-selected="true"] { border-bottom-color: var(--primario); color: var(--primario); font-weight: 600; }
 
 /* modal */
@@ -248,6 +248,26 @@ select, input, textarea { max-width: 100%; }
 .tramo .titulo-tramo { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 10px; }
 .tramo .titulo-tramo > div:first-child { min-width: 0; }
 .tramo h2 { margin-bottom: 2px; } .tramo .titulo-tramo p { margin: 0; }
+
+/* tesorería */
+.dos-columnas { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; align-items: start; }
+.dos-columnas > * { min-width: 0; }
+.lista-simple { list-style: none; padding: 0; margin: 0 0 10px; }
+.lista-simple li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--borde); flex-wrap: wrap; }
+.lista-simple li .crece { flex: 1; min-width: 0; }
+.grafica-meses { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; align-items: end; height: 150px; padding-top: 6px; }
+.grafica-meses .mes { display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; min-width: 0; }
+.grafica-meses .barras { flex: 1; width: 100%; display: flex; justify-content: center; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--borde); }
+.grafica-meses .barras span { width: 40%; max-width: 14px; border-radius: 3px 3px 0 0; min-height: 0; }
+.grafica-meses .etq { font-size: .72rem; color: var(--texto-2); }
+.b-ing { background: var(--ok); } .b-gas { background: var(--marca-barro); }
+.leyenda-grafica { display: flex; gap: 6px; align-items: center; font-size: .85rem; color: var(--texto-2); margin: 8px 0 0; }
+.leyenda-grafica .cuadro { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-left: 8px; }
+input.importe-pres { width: 9em; text-align: right; }
+table.libro td { vertical-align: top; }
+@media print { .tabla-cuentas { width: 100%; border-collapse: collapse; margin: 2mm 0 5mm; } #imprimir h2 { font-size: 12.5pt; margin: 6mm 0 2mm; break-after: avoid; } .tabla-cuentas { break-inside: avoid; } }
+#primeros-pasos progress { width: 100%; height: 8px; accent-color: var(--marca-barro); margin: 10px 0 4px; }
+.lista-pasos li.hecho { color: var(--texto-2); } .lista-pasos li.hecho svg { color: var(--ok); }
 </style>
 </head>
 <body>
@@ -265,7 +285,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.5.1', formato: 'alcancia-v2', repositorio: 'luisserranopro/Alcancia', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.6.0', formato: 'alcancia-v2', repositorio: 'luisserranopro/Alcancia', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -286,6 +306,7 @@ A.aCentimos = function (texto) {
   if (!t) return NaN;
   // admite 1.234,56 · 1234,56 · 1234.56
   if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');   // 2.000 o 1.250.000: puntos de miles
   if (!/^-?\d+(\.\d{1,2})?$/.test(t)) return NaN;
   return Math.round(parseFloat(t) * 100);
 };
@@ -1185,16 +1206,18 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       ajustes: Object.assign({}, A.AJUSTES_DEFECTO),
       tiposCuota: [], miembros: [], cargos: [], remesas: [], salidas: [], tarjetas: [], registro: [], ultimaCopia: null,
       enseres: [], prestamos: [], actividades: [], inscripciones: [], talonarios: [], fiscal: Object.assign({}, A.FISCAL_DEFECTO),
+      apuntes: [], tesoreria: A.tesoreriaInicial((entidad && entidad.perfil) || 'asociacion'),
     };
   };
 
   /* condicionCofrade: distingue cofrades activos y asociados (Archidiócesis de Granada). votoEdadMin y votoAntiguedadMin según estatutos */
   A.AJUSTES_DEFECTO = { bloqueoMin: 15, recordatorioCopiaDias: 7, conservarBajasAnios: 5, condicionCofrade: false, votoEdadMin: 18, votoAntiguedadMin: 1, usarEnseres: false };
-  A.VERSION_DATOS = 3;
+  A.VERSION_DATOS = 4;
 
   A.migrar = function (db) {
     if (!db.version) db.version = 1;
-    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
+    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'apuntes'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
+    if (!db.tesoreria) db.tesoreria = A.tesoreriaInicial((db.entidad && db.entidad.perfil) || 'asociacion');
     db.fiscal = Object.assign({}, A.FISCAL_DEFECTO, db.fiscal || {});
     db.ajustes = Object.assign({}, A.AJUSTES_DEFECTO, db.ajustes || {});
     db.miembros.forEach(function (m) {
@@ -1357,7 +1380,10 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
   A.registrarDevolucion = function (db, cargoId) {
     var c = A.cargoPorId(db, cargoId);
-    if (c) { c.estado = 'devuelto'; c.fechaPago = ''; A.log(db, 'Devolución de ' + c.concepto); }
+    if (!c) return;
+    // se guarda la fecha para restar el recibo devuelto en el libro de caja
+    if (c.remesaId && (c.estado === 'pagado' || c.estado === 'remesado')) (c.devoluciones = c.devoluciones || []).push({ fecha: A.hoyISO(), remesaId: c.remesaId, importeCent: c.importeCent });
+    c.estado = 'devuelto'; c.fechaPago = ''; A.log(db, 'Devolución de ' + c.concepto);
   };
   A.reabrirCargo = function (db, cargoId) {
     var c = A.cargoPorId(db, cargoId);
@@ -1667,6 +1693,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       return [a.nombre || '', t.numero].concat(nom(t.miembroId), [t.participaciones, t.vendidas, t.devueltas, e(t.liquidadoCent), t.estado === 'liquidado' ? 'Liquidado' : 'Por liquidar']); })) });
     if (db.enseres.length) hojas.push({ nombre: 'Inventario', filas: [['Código', 'Pieza', 'Tipo', 'Talla', 'Ubicación', 'Estado', 'Fianza (€)']].concat(db.enseres.map(function (x) {
       return [x.codigo, x.nombre, x.tipo, x.talla, x.ubicacion, A.ESTADOS_ENSER[x.estado], e(x.fianzaCent || 0)]; })) });
+    if (A.hojasTesoreria && (db.apuntes.length || db.remesas.length || db.tarjetas.length || db.inscripciones.length)) hojas = hojas.concat(A.hojasTesoreria(db, A.ejercicioActual(db)).slice(0, 2));
     if (db.prestamos.length) hojas.push({ nombre: 'Préstamos', filas: [['Pieza', 'Nº', v.Miembro, 'Prestada', 'Devolver antes de', 'Devuelta', 'Estado al devolver', 'Fianza (€)', 'Fianza']].concat(db.prestamos.map(function (p) {
       var x = A.enserPorId(db, p.enserId) || {};
       return [(x.codigo ? x.codigo + ' ' : '') + (x.nombre || '')].concat(nom(p.miembroId), [A.fechaES(p.fechaPrestamo), p.fechaPrevista ? A.fechaES(p.fechaPrevista) : '', p.fechaDevolucion ? A.fechaES(p.fechaDevolucion) : '',
@@ -1696,7 +1723,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.comprobarDatos = function (db) {
     var p = [], ids = new Set(), rep = 0;
     function id(lista) { (lista || []).forEach(function (x) { if (!x || !x.id) return; if (ids.has(x.id)) rep++; ids.add(x.id); }); }
-    ['miembros', 'cargos', 'remesas', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'tiposCuota'].forEach(function (k) { id(db[k]); });
+    ['miembros', 'cargos', 'remesas', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'tiposCuota', 'apuntes'].forEach(function (k) { id(db[k]); });
     if (rep) p.push({ tipo: 'idsRepetidos', n: rep, texto: rep + ' registros comparten identificador', reparable: false });
     var miembros = new Set(db.miembros.map(function (m) { return m.id; }));
     var existe = function (mid) { return !mid || mid === 'suprimido' || miembros.has(mid); };
@@ -1726,9 +1753,14 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var activos = {}; db.prestamos.forEach(function (x) { if (!x.fechaDevolucion) activos[x.enserId] = (activos[x.enserId] || 0) + 1; });
     cuenta('enseresIncoherentes', db.enseres.filter(function (e) { return (e.estado === 'prestado') !== !!activos[e.id]; }).length, 'piezas con un estado que no coincide con sus préstamos', true);
     cuenta('prestamosDobles', Object.keys(activos).filter(function (k) { return activos[k] > 1; }).length, 'piezas prestadas a la vez a más de una persona');
+    if (db.tesoreria) {
+      var cu = new Set(db.tesoreria.cuentas.map(function (x) { return x.id; })), pa = new Set(db.tesoreria.partidas.map(function (x) { return x.id; }));
+      cuenta('apuntesSinCuenta', (db.apuntes || []).filter(function (a) { return !cu.has(a.cuentaId) || (a.tipo === 'traspaso' && !cu.has(a.cuentaDestinoId)); }).length, 'apuntes del libro de caja con una cuenta que ya no existe');
+      cuenta('apuntesSinPartida', (db.apuntes || []).filter(function (a) { return a.tipo !== 'traspaso' && !pa.has(a.partidaId); }).length, 'apuntes del libro de caja con una partida que ya no existe');
+    }
     return { problemas: p, total: p.reduce(function (s, x) { return s + x.n; }, 0),
       recuento: { miembros: db.miembros.length, cuotas: db.cargos.length, remesas: db.remesas.length, salidas: db.salidas.length, tarjetas: db.tarjetas.length,
-        actividades: db.actividades.length, inscripciones: db.inscripciones.length, talonarios: db.talonarios.length, enseres: db.enseres.length, prestamos: db.prestamos.length } };
+        actividades: db.actividades.length, inscripciones: db.inscripciones.length, talonarios: db.talonarios.length, enseres: db.enseres.length, prestamos: db.prestamos.length, apuntes: (db.apuntes || []).length } };
   };
 
   /* Reparaciones seguras: no borran importes ni cobros; los dejan sin persona («suprimido») o quitan referencias imposibles */
@@ -1754,6 +1786,345 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     });
     if (n) A.log(db, 'Comprobación de datos: ' + n + ' correcciones automáticas');
     return n;
+  };
+})(A);
+
+/* Alcancía · tesorería: libro de caja, saldos de banco y caja, presupuesto y estado de cuentas.
+   Los cobros que ya registra el programa (remesas, cuotas cobradas a mano, tarjetas de sitio, actividades, lotería,
+   donativos y fianzas) entran solos en el libro: se calculan a partir de esos registros y nunca se duplican.
+   A mano solo se apuntan los gastos, los demás ingresos y los traspasos entre cuentas. */
+'use strict';
+(function (A) {
+  /* Partidas automáticas: no se borran porque las alimenta el propio programa */
+  var AUTO = [['cuotas', 'Cuotas', 'ingreso'], ['donativos', 'Donativos', 'ingreso'], ['tarjetas', 'Tarjetas de sitio', 'ingreso'],
+    ['actividades', 'Actividades', 'ingreso'], ['loteria', 'Lotería', 'ingreso'], ['fianzas', 'Fianzas (depósitos)', 'fianza']];
+  var PARTIDAS = {
+    comunes: { ingreso: ['Subvenciones', 'Patrocinios y publicidad', 'Venta de artículos', 'Otros ingresos'],
+      gasto: ['Alquiler y local', 'Suministros (luz, agua, teléfono)', 'Seguros', 'Comisiones bancarias', 'Material de oficina e imprenta', 'Gestoría, tasas e impuestos', 'Otros gastos'] },
+    hermandad: { ingreso: ['Limosnas y colectas', 'Rifas y tómbolas'], gasto: ['Culto y actos', 'Estación de penitencia', 'Flores y cera', 'Patrimonio y restauración', 'Caridad y obra social', 'Compra de lotería'] },
+    ampa: { ingreso: [], gasto: ['Actividades extraescolares', 'Fiestas y graduaciones', 'Ayudas al centro', 'Compra de lotería'] },
+    club: { ingreso: ['Cuotas de inscripción en competiciones'], gasto: ['Federación y licencias', 'Arbitrajes', 'Desplazamientos', 'Material deportivo', 'Instalaciones deportivas', 'Compra de lotería'] },
+    asociacion: { ingreso: [], gasto: ['Actividades y proyectos', 'Compra de lotería'] },
+  };
+  A.TIPOS_APUNTE = { ingreso: 'Ingreso', gasto: 'Gasto', traspaso: 'Traspaso entre cuentas' };
+  A.MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+  A.tesoreriaInicial = function (perfil) {
+    var p = PARTIDAS[perfil] || PARTIDAS.asociacion, partidas = AUTO.map(function (x) { return { id: x[0], nombre: x[1], tipo: x[2], auto: true }; });
+    ['ingreso', 'gasto'].forEach(function (tipo) {
+      p[tipo].concat(PARTIDAS.comunes[tipo]).forEach(function (n) { partidas.push({ id: A.uid('pt'), nombre: n, tipo: tipo }); });
+    });
+    return { mesInicio: 1, cuentas: [{ id: 'banco', nombre: 'Cuenta bancaria', tipo: 'banco' }, { id: 'caja', nombre: 'Caja (efectivo)', tipo: 'caja' }],
+      inicio: null, partidas: partidas, presupuestos: {}, arqueos: [] };
+  };
+  A.tes = function (db) {
+    if (!db.tesoreria) db.tesoreria = A.tesoreriaInicial(db.entidad.perfil);
+    if (!Array.isArray(db.apuntes)) db.apuntes = [];
+    return db.tesoreria;
+  };
+  A.partidaPorId = function (db, id) { return A.tes(db).partidas.find(function (p) { return p.id === id; }); };
+  A.cuentaPorId = function (db, id) { return A.tes(db).cuentas.find(function (x) { return x.id === id; }); };
+  /* Cuenta donde entra un cobro según cómo se pagó: el efectivo a la caja y lo demás al banco */
+  A.cuentaDeForma = function (db, forma) {
+    var t = A.tes(db), tipo = forma === 'efectivo' ? 'caja' : 'banco';
+    var c = t.cuentas.find(function (x) { return x.tipo === tipo && !x.baja; }) || t.cuentas[0];
+    return c ? c.id : '';
+  };
+
+  /* ---------- ejercicios ---------- */
+  A.ejercicioDe = function (db, fecha) {
+    var mi = A.tes(db).mesInicio || 1, a = +fecha.slice(0, 4), m = +fecha.slice(5, 7);
+    return m >= mi ? a : a - 1;
+  };
+  A.rangoEjercicio = function (db, ej) {
+    var mi = A.tes(db).mesInicio || 1, desde = ej + '-' + String(mi).padStart(2, '0') + '-01';
+    var fin = mi === 1 ? ej + '-12-31' : A.fechaISO(new Date(ej + 1, mi - 1, 0));
+    return { desde: desde, hasta: fin };
+  };
+  A.nombreEjercicio = function (db, ej) { return (A.tes(db).mesInicio || 1) === 1 ? String(ej) : ej + '-' + String(ej + 1).slice(2); };
+  A.ejercicioActual = function (db) { return A.ejercicioDe(db, A.hoyISO()); };
+  A.ejerciciosConDatos = function (db) {
+    var s = new Set([A.ejercicioActual(db)]);
+    A.movimientos(db).forEach(function (x) { s.add(A.ejercicioDe(db, x.fecha)); });
+    return Array.from(s).sort(function (a, b) { return b - a; });
+  };
+
+  /* ---------- movimientos automáticos ----------
+     Se agrupan por día, cuenta y origen para que el libro sea legible: «Tarjetas · Estación 2027 · 35 cobros». */
+  A.movimientosAuto = function (db) {
+    var grupos = new Map(), remesas = {};
+    db.remesas.forEach(function (r) { remesas[r.id] = r; });
+    function sumar(fecha, partidaId, cuentaId, sentido, cent, concepto, ref, enlace) {
+      if (!fecha || !cent) return;
+      var k = fecha + '|' + partidaId + '|' + cuentaId + '|' + sentido + '|' + (ref || '');
+      var g = grupos.get(k);
+      if (!g) { g = { id: 'auto:' + k, fecha: fecha, tipo: sentido > 0 ? 'ingreso' : 'gasto', partidaId: partidaId, cuentaId: cuentaId, importeCent: 0, n: 0, concepto: concepto, enlace: enlace || '', auto: true }; grupos.set(k, g); }
+      g.importeCent += cent; g.n++;
+    }
+    db.remesas.forEach(function (r) {
+      if (r.estado === 'cobrada') sumar(r.fechaCobro, 'cuotas', A.cuentaDeForma(db, 'domiciliacion'), 1, r.totalCent, 'Remesa de recibos ' + (r.msgId || '') + ' (' + r.n + ' recibos)', r.id, 'remesas');
+    });
+    db.cargos.forEach(function (c) {
+      (c.devoluciones || []).forEach(function (d) {
+        var r = remesas[d.remesaId];
+        if (r && r.estado === 'cobrada') sumar(d.fecha, 'cuotas', A.cuentaDeForma(db, 'domiciliacion'), -1, d.importeCent, 'Recibos devueltos por el banco', 'dev', 'remesas?pestana=devoluciones');
+      });
+      if (c.estado !== 'pagado' || !c.fechaPago) return;
+      if (c.remesaId && c.formaPago === 'domiciliacion' && remesas[c.remesaId]) return;   // ya está en el total de su remesa
+      var don = !!c.donativo;
+      sumar(c.fechaPago, don ? 'donativos' : 'cuotas', A.cuentaDeForma(db, c.formaPago), 1, c.importeCent,
+        (don ? 'Donativos' : 'Cuotas cobradas') + ' · ' + (A.FORMAS_PAGO[c.formaPago] || A.FORMAS_COBRO[c.formaPago] || c.formaPago || ''), don ? 'don' : 'cuo', don ? 'donativos' : 'cuotas');
+    });
+    var salidas = {}; db.salidas.forEach(function (s) { salidas[s.id] = s; });
+    db.tarjetas.forEach(function (t) {
+      if (t.estado !== 'pagada' || !t.fechaPago) return;
+      var s = salidas[t.salidaId] || {};
+      sumar(t.fechaPago, 'tarjetas', A.cuentaDeForma(db, t.formaPago), 1, t.importeCent, 'Tarjetas de sitio · ' + (s.nombre || 'salida') + ' · ' + (A.FORMAS_COBRO[t.formaPago] || t.formaPago), t.salidaId, 'salidas?id=' + t.salidaId);
+    });
+    var acts = {}; db.actividades.forEach(function (a) { acts[a.id] = a; });
+    db.inscripciones.forEach(function (x) {
+      var a = acts[x.actividadId] || {};
+      (x.pagos || []).forEach(function (p) {
+        sumar(p.fecha, 'actividades', A.cuentaDeForma(db, p.formaPago), p.importeCent < 0 ? -1 : 1, Math.abs(p.importeCent), (a.nombre || 'Actividad') + ' · ' + (A.FORMAS_COBRO[p.formaPago] || p.formaPago || ''), x.actividadId, 'actividades?id=' + x.actividadId);
+      });
+    });
+    db.talonarios.forEach(function (t) {
+      if (t.estado !== 'liquidado' || !t.liquidadoCent) return;
+      var a = acts[t.actividadId] || {};
+      sumar(t.fechaLiquidacion, 'loteria', A.cuentaDeForma(db, t.formaPago), 1, t.liquidadoCent, 'Liquidación de talonarios · ' + (a.nombre || 'lotería'), t.actividadId, 'actividades?id=' + t.actividadId);
+    });
+    db.prestamos.forEach(function (p) {
+      if (!p.fianzaCent || p.fianzaEstado === 'ninguna' || p.fianzaEstado === 'pendiente') return;
+      var cuenta = A.cuentaDeForma(db, p.formaPago);
+      sumar(p.fechaFianza || p.fechaPrestamo, 'fianzas', cuenta, 1, p.fianzaCent, 'Fianzas recibidas por préstamos', 'fz', 'enseres?pestana=prestamos');
+      if (p.fianzaEstado === 'devuelta') sumar(p.fechaDevolucion, 'fianzas', cuenta, -1, p.fianzaCent, 'Fianzas devueltas', 'fz', 'enseres?pestana=prestamos');
+    });
+    return Array.from(grupos.values()).map(function (g) { if (g.n > 1 && !/recibos\)$/.test(g.concepto)) g.concepto += ' (' + g.n + ')'; return g; });
+  };
+
+  /* Todos los movimientos (automáticos y apuntes), con signo: los traspasos se desdoblan en salida y entrada */
+  var CACHE = null;   // dura solo la tarea en curso (un dibujo de pantalla), así nunca queda desfasada
+  A.movimientos = function (db) {
+    // cualquier cambio registrado (cobros, devoluciones, apuntes…) deja una línea nueva en el registro
+    var clave = [db.apuntes.length, (db.tesoreria || {}).cuentas && db.tesoreria.cuentas.length, db.cargos.length, db.tarjetas.length, db.prestamos.length].join('|');
+    if (CACHE && CACHE.db === db && CACHE.clave === clave && CACHE.ultimo === db.registro[0]) return CACHE.r;
+    var r = calcular(db);
+    CACHE = { db: db, clave: clave, ultimo: db.registro[0], r: r };
+    if (typeof setTimeout === 'function') setTimeout(function () { CACHE = null; }, 0);
+    return r;
+  };
+  function calcular(db) {
+    A.tes(db);
+    var r = A.movimientosAuto(db);
+    db.apuntes.forEach(function (a) {
+      if (a.tipo === 'traspaso') {
+        r.push({ id: a.id, apunte: a, fecha: a.fecha, tipo: 'traspaso', partidaId: '', cuentaId: a.cuentaId, importeCent: a.importeCent, signo: -1, concepto: a.concepto || 'Traspaso' });
+        r.push({ id: a.id + ':destino', apunte: a, fecha: a.fecha, tipo: 'traspaso', partidaId: '', cuentaId: a.cuentaDestinoId, importeCent: a.importeCent, signo: 1, concepto: a.concepto || 'Traspaso' });
+      } else r.push({ id: a.id, apunte: a, fecha: a.fecha, tipo: a.tipo, partidaId: a.partidaId, cuentaId: a.cuentaId, importeCent: a.importeCent, concepto: a.concepto, tercero: a.tercero, documento: a.documento });
+    });
+    r.forEach(function (m) { if (m.signo === undefined) m.signo = m.tipo === 'gasto' ? -1 : 1; });
+    return r.sort(function (a, b) { return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : (a.auto ? 0 : 1) - (b.auto ? 0 : 1); });
+  }
+  A.olvidarMovimientos = function () { CACHE = null; };
+  A.netoMovimiento = function (m) { return m.signo * m.importeCent; };
+
+  /* ---------- apuntes manuales ---------- */
+  A.guardarApunte = function (db, d) {
+    var t = A.tes(db);
+    if (!A.TIPOS_APUNTE[d.tipo]) throw new Error('Elige si es un ingreso, un gasto o un traspaso.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.fecha || '')) throw new Error('Indica la fecha.');
+    if (!(d.importeCent > 0)) throw new Error('Indica un importe mayor que cero.');
+    if (!A.cuentaPorId(db, d.cuentaId)) throw new Error('Elige la cuenta.');
+    if (d.tipo === 'traspaso') {
+      if (!A.cuentaPorId(db, d.cuentaDestinoId) || d.cuentaDestinoId === d.cuentaId) throw new Error('Elige una cuenta de destino distinta de la de origen.');
+    } else {
+      var p = A.partidaPorId(db, d.partidaId);
+      if (!p) throw new Error('Elige la partida.');
+      if (p.tipo !== 'fianza' && p.tipo !== d.tipo) throw new Error('La partida «' + p.nombre + '» es de ' + (p.tipo === 'ingreso' ? 'ingresos' : 'gastos') + '.');
+    }
+    if (!String(d.concepto || '').trim() && d.tipo !== 'traspaso') throw new Error('Escribe el concepto.');
+    var a = d.id ? db.apuntes.find(function (x) { return x.id === d.id; }) : null;
+    if (!a) { a = { id: A.uid('ap'), creado: new Date().toISOString() }; db.apuntes.push(a); }
+    Object.assign(a, { tipo: d.tipo, fecha: d.fecha, importeCent: Math.round(d.importeCent), cuentaId: d.cuentaId, cuentaDestinoId: d.tipo === 'traspaso' ? d.cuentaDestinoId : '',
+      partidaId: d.tipo === 'traspaso' ? '' : d.partidaId, concepto: String(d.concepto || '').trim(), tercero: String(d.tercero || '').trim(), documento: String(d.documento || '').trim(),
+      observaciones: String(d.observaciones || '').trim(), modificado: new Date().toISOString() });
+    CACHE = null;
+    A.log(db, (d.id ? 'Modificado' : 'Nuevo') + ' apunte de ' + A.TIPOS_APUNTE[a.tipo].toLowerCase() + ' de ' + A.euros(a.importeCent));
+    void t;
+    return a;
+  };
+  A.borrarApunte = function (db, id) {
+    var a = db.apuntes.find(function (x) { return x.id === id; }); if (!a) return;
+    db.apuntes = db.apuntes.filter(function (x) { return x.id !== id; });
+    A.log(db, 'Borrado apunte de ' + A.euros(a.importeCent) + ' del ' + A.fechaES(a.fecha));
+  };
+
+  /* ---------- cuentas y partidas ---------- */
+  A.guardarCuenta = function (db, d) {
+    var t = A.tes(db);
+    if (!String(d.nombre || '').trim()) throw new Error('Escribe el nombre de la cuenta.');
+    var c = d.id ? A.cuentaPorId(db, d.id) : null;
+    if (!c) { c = { id: A.uid('cu') }; t.cuentas.push(c); }
+    Object.assign(c, { nombre: d.nombre.trim(), tipo: d.tipo === 'caja' ? 'caja' : 'banco', iban: d.iban ? A.limpiaIBAN(d.iban) : '' });
+    return c;
+  };
+  A.borrarCuenta = function (db, id) {
+    var t = A.tes(db);
+    if (A.movimientos(db).some(function (m) { return m.cuentaId === id; })) throw new Error('La cuenta tiene movimientos: no se puede borrar.');
+    if (t.cuentas.length <= 1) throw new Error('Tiene que quedar al menos una cuenta.');
+    t.cuentas = t.cuentas.filter(function (c) { return c.id !== id; });
+    if (t.inicio) delete t.inicio.saldos[id];
+  };
+  A.guardarPartida = function (db, d) {
+    var t = A.tes(db);
+    if (!String(d.nombre || '').trim()) throw new Error('Escribe el nombre de la partida.');
+    var p = d.id ? A.partidaPorId(db, d.id) : null;
+    if (!p) { if (d.tipo !== 'ingreso' && d.tipo !== 'gasto') throw new Error('Elige si es de ingresos o de gastos.'); p = { id: A.uid('pt'), tipo: d.tipo }; t.partidas.push(p); }
+    p.nombre = d.nombre.trim();
+    return p;
+  };
+  A.borrarPartida = function (db, id) {
+    var t = A.tes(db), p = A.partidaPorId(db, id);
+    CACHE = null;
+    if (!p) return; if (p.auto) throw new Error('Esta partida la usa el propio programa: puedes cambiarle el nombre, pero no borrarla.');
+    if (db.apuntes.some(function (a) { return a.partidaId === id; })) throw new Error('Hay apuntes en «' + p.nombre + '»: cámbialos de partida antes de borrarla.');
+    t.partidas = t.partidas.filter(function (x) { return x.id !== id; });
+    Object.keys(t.presupuestos).forEach(function (k) { delete t.presupuestos[k][id]; });
+  };
+  A.partidasDe = function (db, tipo) { return A.tes(db).partidas.filter(function (p) { return !tipo || p.tipo === tipo; }); };
+
+  /* ---------- saldo inicial y saldos ---------- */
+  A.fijarInicio = function (db, fecha, saldos) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha || '')) throw new Error('Indica la fecha del saldo inicial.');
+    var s = {}; A.tes(db).cuentas.forEach(function (c) { s[c.id] = Math.round(+saldos[c.id] || 0); });
+    A.tes(db).inicio = { fecha: fecha, saldos: s };
+    A.log(db, 'Saldo inicial de tesorería a ' + A.fechaES(fecha));
+  };
+  /* Saldo de cada cuenta al final del día indicado. Sin saldo inicial, se cuenta desde cero. */
+  A.saldos = function (db, hasta, movs) {
+    var t = A.tes(db), ini = t.inicio || { fecha: '0000-00-00', saldos: {} }, r = {};
+    t.cuentas.forEach(function (c) { r[c.id] = ini.saldos[c.id] || 0; });
+    (movs || A.movimientos(db)).forEach(function (m) {
+      if (m.fecha < ini.fecha || m.fecha > hasta) return;
+      if (r[m.cuentaId] === undefined) r[m.cuentaId] = 0;
+      r[m.cuentaId] += A.netoMovimiento(m);
+    });
+    return r;
+  };
+  A.diaAnterior = function (iso) { var d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - 1); return A.fechaISO(d); };
+
+  /* Libro de un periodo, con saldo acumulado (de una cuenta o de todas) */
+  A.libroCaja = function (db, desde, hasta, filtro) {
+    filtro = filtro || {};
+    var movs = A.movimientos(db), ini = A.tes(db).inicio;
+    var s0 = A.saldos(db, A.diaAnterior(desde), movs), saldo = filtro.cuentaId ? s0[filtro.cuentaId] || 0 : Object.keys(s0).reduce(function (a, k) { return a + s0[k]; }, 0);
+    var inicial = saldo, filas = [];
+    movs.forEach(function (m) {
+      if (m.fecha < desde || m.fecha > hasta) return;
+      if (filtro.cuentaId && m.cuentaId !== filtro.cuentaId) return;
+      if (!filtro.cuentaId && m.tipo === 'traspaso') return;                  // entre cuentas propias no cambia el total
+      if (filtro.partidaId && m.partidaId !== filtro.partidaId) return;
+      if (!ini || m.fecha >= ini.fecha) saldo += A.netoMovimiento(m);
+      filas.push({ m: m, saldo: saldo });
+    });
+    return { inicial: inicial, final: saldo, filas: filas, antesDelInicio: !!(ini && desde < ini.fecha) };
+  };
+
+  /* Resumen de un ejercicio: ingresos y gastos por partida, resultado, saldos y presupuesto */
+  A.resumenEjercicio = function (db, ej) {
+    var t = A.tes(db), rg = A.rangoEjercicio(db, ej), movs = A.movimientos(db), por = {};
+    t.partidas.forEach(function (p) { por[p.id] = 0; });
+    movs.forEach(function (m) { if (m.fecha >= rg.desde && m.fecha <= rg.hasta && m.partidaId) por[m.partidaId] = (por[m.partidaId] || 0) + A.netoMovimiento(m); });
+    var pres = t.presupuestos[ej] || {}, presAnt = t.presupuestos[ej - 1];
+    var fila = function (p) { return { p: p, realCent: p.tipo === 'gasto' ? -por[p.id] : por[p.id], presupuestoCent: pres[p.id] || 0 }; };
+    var ingresos = t.partidas.filter(function (p) { return p.tipo === 'ingreso'; }).map(fila);
+    var gastos = t.partidas.filter(function (p) { return p.tipo === 'gasto'; }).map(fila);
+    var suma = function (l, k) { return l.reduce(function (s, x) { return s + x[k]; }, 0); };
+    var ini = A.saldos(db, A.diaAnterior(rg.desde), movs), fin = A.saldos(db, rg.hasta, movs);
+    var tot = function (o) { return Object.keys(o).reduce(function (s, k) { return s + o[k]; }, 0); };
+    var fianzas = por.fianzas || 0;
+    // depósito total de fianzas pendientes de devolver al final del ejercicio
+    var depositadas = db.prestamos.reduce(function (s, p) {
+      var desde = p.fechaFianza || p.fechaPrestamo;
+      if (!p.fianzaCent || p.fianzaEstado === 'ninguna' || p.fianzaEstado === 'pendiente' || desde > rg.hasta) return s;
+      if (p.fianzaEstado === 'devuelta' && p.fechaDevolucion <= rg.hasta) return s;
+      return s + p.fianzaCent;
+    }, 0);
+    var pendientes = db.cargos.filter(function (c) { return (c.estado === 'pendiente' || c.estado === 'devuelto' || c.estado === 'remesado') && (c.creado || '').slice(0, 10) <= rg.hasta; });
+    return { ejercicio: ej, nombre: A.nombreEjercicio(db, ej), desde: rg.desde, hasta: rg.hasta, ingresos: ingresos, gastos: gastos,
+      totalIngresos: suma(ingresos, 'realCent'), totalGastos: suma(gastos, 'realCent'), presIngresos: suma(ingresos, 'presupuestoCent'), presGastos: suma(gastos, 'presupuestoCent'),
+      resultado: suma(ingresos, 'realCent') - suma(gastos, 'realCent'), fianzasNetas: fianzas, fianzasEnDeposito: depositadas,
+      saldosIniciales: ini, saldosFinales: fin, totalInicial: tot(ini), totalFinal: tot(fin), hayPresupuesto: !!Object.keys(pres).length, hayPresupuestoAnterior: !!presAnt,
+      pendienteCobroCent: pendientes.reduce(function (s, c) { return s + c.importeCent; }, 0), pendienteCobroN: pendientes.length,
+      sinInicio: !t.inicio, inicioPosterior: !!(t.inicio && t.inicio.fecha > rg.desde) };
+  };
+
+  /* Ingresos y gastos de cada mes del ejercicio (para la gráfica del resumen) */
+  A.mesesEjercicio = function (db, ej) {
+    var rg = A.rangoEjercicio(db, ej), r = [], mi = A.tes(db).mesInicio || 1;
+    for (var i = 0; i < 12; i++) { var m = (mi - 1 + i) % 12; r.push({ mes: m, anio: ej + (mi - 1 + i >= 12 ? 1 : 0), ingresos: 0, gastos: 0 }); }
+    var tipos = {}; A.tes(db).partidas.forEach(function (p) { tipos[p.id] = p; });
+    A.movimientos(db).forEach(function (x) {
+      if (x.fecha < rg.desde || x.fecha > rg.hasta || !x.partidaId) return;
+      var p = tipos[x.partidaId]; if (!p || p.tipo === 'fianza') return;
+      var k = r.findIndex(function (y) { return y.mes === +x.fecha.slice(5, 7) - 1 && y.anio === +x.fecha.slice(0, 4); });
+      if (k < 0) return;
+      if (p.tipo === 'ingreso') r[k].ingresos += A.netoMovimiento(x); else r[k].gastos -= A.netoMovimiento(x);
+    });
+    return r;
+  };
+
+  /* ---------- presupuesto ---------- */
+  A.fijarPresupuesto = function (db, ej, valores) {
+    var t = A.tes(db), p = {};
+    Object.keys(valores).forEach(function (k) { var v = Math.round(+valores[k] || 0); if (v > 0 && A.partidaPorId(db, k)) p[k] = v; });
+    t.presupuestos[ej] = p;
+    A.log(db, 'Presupuesto del ejercicio ' + A.nombreEjercicio(db, ej));
+  };
+  /* Propuesta: lo presupuestado el año anterior o, si no lo hubo, lo que realmente se ingresó y gastó */
+  A.propuestaPresupuesto = function (db, ej, base) {
+    var t = A.tes(db), r = {};
+    if (base === 'presupuesto' && t.presupuestos[ej - 1]) return Object.assign({}, t.presupuestos[ej - 1]);
+    var res = A.resumenEjercicio(db, ej - 1);
+    res.ingresos.concat(res.gastos).forEach(function (x) { if (x.realCent > 0) r[x.p.id] = Math.round(x.realCent / 100) * 100; });
+    return r;
+  };
+
+  /* ---------- arqueo: comparar con el extracto del banco o con el dinero contado ---------- */
+  A.arqueo = function (db, cuentaId, fecha, realCent, ajustar) {
+    var libro = A.saldos(db, fecha)[cuentaId] || 0, dif = realCent - libro;
+    A.tes(db).arqueos.unshift({ fecha: fecha, cuentaId: cuentaId, libroCent: libro, realCent: realCent, diferenciaCent: dif, registrado: new Date().toISOString() });
+    if (A.tes(db).arqueos.length > 100) A.tes(db).arqueos.length = 100;
+    if (ajustar && dif) {
+      var p = A.partidasDe(db, dif > 0 ? 'ingreso' : 'gasto').find(function (x) { return /^otros/i.test(x.nombre); }) || A.partidasDe(db, dif > 0 ? 'ingreso' : 'gasto')[0];
+      A.guardarApunte(db, { tipo: dif > 0 ? 'ingreso' : 'gasto', fecha: fecha, importeCent: Math.abs(dif), cuentaId: cuentaId, partidaId: p.id, concepto: 'Diferencia de arqueo' });
+    }
+    A.log(db, 'Arqueo de «' + (A.cuentaPorId(db, cuentaId) || {}).nombre + '»: diferencia de ' + A.euros(dif));
+    return { libroCent: libro, diferenciaCent: dif };
+  };
+
+  /* ---------- exportar ---------- */
+  A.hojasTesoreria = function (db, ej) {
+    var rg = A.rangoEjercicio(db, ej), e = function (c) { return c / 100; }, nomP = function (id) { var p = A.partidaPorId(db, id); return p ? p.nombre : ''; };
+    var nomC = function (id) { var c = A.cuentaPorId(db, id); return c ? c.nombre : ''; };
+    var libro = A.libroCaja(db, rg.desde, rg.hasta);
+    var filas = [['Fecha', 'Concepto', 'Partida', 'Cuenta', 'Ingreso (€)', 'Gasto (€)', 'Saldo (€)', 'Proveedor o pagador', 'Nº de factura o justificante', 'Origen']];
+    filas.push(['', 'Saldo inicial', '', '', '', '', e(libro.inicial), '', '', '']);
+    libro.filas.forEach(function (f) {
+      var m = f.m, n = A.netoMovimiento(m);
+      filas.push([A.fechaES(m.fecha), m.concepto || '', nomP(m.partidaId), nomC(m.cuentaId), n > 0 ? e(n) : '', n < 0 ? e(-n) : '', e(f.saldo), m.tercero || '', m.documento || '', m.auto ? 'Automático' : 'Apunte']);
+    });
+    var traspasos = A.movimientos(db).filter(function (m) { return m.tipo === 'traspaso' && m.signo < 0 && m.fecha >= rg.desde && m.fecha <= rg.hasta; });
+    var r = A.resumenEjercicio(db, ej);
+    var res = [['Partida', 'Tipo', 'Presupuesto (€)', 'Real (€)', 'Diferencia (€)']];
+    r.ingresos.concat(r.gastos).forEach(function (x) { res.push([x.p.nombre, x.p.tipo === 'ingreso' ? 'Ingreso' : 'Gasto', e(x.presupuestoCent), e(x.realCent), e(x.realCent - x.presupuestoCent)]); });
+    res.push(['Total ingresos', '', e(r.presIngresos), e(r.totalIngresos), e(r.totalIngresos - r.presIngresos)], ['Total gastos', '', e(r.presGastos), e(r.totalGastos), e(r.totalGastos - r.presGastos)], ['Resultado', '', e(r.presIngresos - r.presGastos), e(r.resultado), '']);
+    var saldos = [['Cuenta', 'Saldo a ' + A.fechaES(A.diaAnterior(rg.desde)) + ' (€)', 'Saldo a ' + A.fechaES(rg.hasta) + ' (€)']];
+    A.tes(db).cuentas.forEach(function (c) { saldos.push([c.nombre, e(r.saldosIniciales[c.id] || 0), e(r.saldosFinales[c.id] || 0)]); });
+    var hojas = [{ nombre: 'Libro de caja ' + r.nombre, filas: filas }, { nombre: 'Resumen ' + r.nombre, filas: res }, { nombre: 'Saldos ' + r.nombre, filas: saldos }];
+    if (traspasos.length) hojas.push({ nombre: 'Traspasos ' + r.nombre, filas: [['Fecha', 'Desde', 'Hacia', 'Importe (€)', 'Concepto']].concat(traspasos.map(function (m) {
+      return [A.fechaES(m.fecha), nomC(m.apunte.cuentaId), nomC(m.apunte.cuentaDestinoId), e(m.importeCent), m.concepto || '']; })) });
+    return hojas;
   };
 })(A);
 
@@ -2241,7 +2612,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.cobrarFianza = function (db, prestamoId) {
     var p = db.prestamos.find(function (x) { return x.id === prestamoId; });
     if (!p || p.fianzaEstado !== 'pendiente') return;
-    p.fianzaEstado = 'cobrada'; p.historial.push({ fecha: new Date().toISOString(), texto: 'Fianza cobrada' });
+    p.fianzaEstado = 'cobrada'; p.fechaFianza = A.hoyISO(); p.historial.push({ fecha: new Date().toISOString(), texto: 'Fianza cobrada' });
   };
 
   A.prestamosActivos = function (db) {
@@ -2602,6 +2973,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     calendario: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2"/>',
     percha: '<path d="M12 7a2 2 0 1 1 2-2c0 1.2-2 1.5-2 3v1"/><path d="M12 9 3 16.5a1.3 1.3 0 0 0 .8 2.3h16.4a1.3 1.3 0 0 0 .8-2.3L12 9Z"/>',
     corazon: '<path d="M12 20s-7.5-4.6-9-9.3C1.9 7.2 4.3 4 7.5 4c1.9 0 3.4 1 4.5 2.6C13.1 5 14.6 4 16.5 4c3.2 0 5.6 3.2 4.5 6.7-1.5 4.7-9 9.3-9 9.3Z"/>',
+    cartera: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/><path d="M6 6V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>',
     historial: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
   };
   A.icono = function (n, t) {
@@ -3020,6 +3392,39 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   };
 
+  /* Tesorería de ejemplo: saldo inicial, gastos e ingresos habituales repartidos hasta hoy y un presupuesto */
+  function ejemploTesoreria(db) {
+    var ej = A.ejercicioActual(db), rg = A.rangoEjercicio(db, ej), hoy = A.hoyISO();
+    A.fijarInicio(db, rg.desde, { banco: 485000, caja: 32000 });
+    var p = function (re, tipo) { return (A.partidasDe(db, tipo).find(function (x) { return re.test(x.nombre); }) || A.partidasDe(db, tipo)[0]).id; };
+    var perfil = db.entidad.perfil;
+    var lista = [
+      [0, 10, 'gasto', /Seguros/, 38500, 'Póliza de responsabilidad civil', 'Seguros del Sur', 'P-2201', 'banco'],
+      [0, 25, 'gasto', /Comisiones/, 1800, 'Comisión de mantenimiento', 'Banco', '', 'banco'],
+      [1, 12, 'gasto', /Material de oficina/, 6450, 'Sobres, papel y tóner', 'Papelería Central', 'F-118', 'caja'],
+      [2, 3, 'ingreso', /Subvenciones/, 60000, 'Subvención municipal a entidades', 'Ayuntamiento', 'Resolución 45', 'banco'],
+      [2, 20, 'gasto', /Suministros/, 7320, 'Luz del local', 'Compañía eléctrica', 'F-0315', 'banco'],
+      [3, 5, 'traspaso', null, 25000, 'Ingreso de efectivo en el banco', '', '', 'caja'],
+      [3, 28, 'gasto', perfil === 'hermandad' ? /Flores/ : perfil === 'club' ? /Arbitrajes/ : perfil === 'ampa' ? /Fiestas/ : /Actividades y proyectos/, 21500,
+        perfil === 'hermandad' ? 'Flores para el paso' : perfil === 'club' ? 'Arbitrajes de la jornada' : perfil === 'ampa' ? 'Fiesta de fin de trimestre' : 'Taller de primavera', '', 'F-77', 'banco'],
+      [4, 15, 'ingreso', /Otros ingresos/, 8500, 'Barra de la convivencia', '', '', 'caja'],
+      [5, 18, 'gasto', perfil === 'hermandad' ? /Caridad/ : perfil === 'club' ? /Material deportivo/ : perfil === 'ampa' ? /Ayudas al centro/ : /Actividades y proyectos/, 30000,
+        perfil === 'hermandad' ? 'Aportación a Cáritas parroquial' : perfil === 'club' ? 'Balones y petos' : perfil === 'ampa' ? 'Libros para la biblioteca del centro' : 'Material para actividades', '', 'F-205', 'banco'],
+      [6, 2, 'gasto', /Comisiones/, 1800, 'Comisión de mantenimiento', 'Banco', '', 'banco'],
+      [8, 9, 'gasto', /Alquiler/, 15000, 'Alquiler de salón para la asamblea', '', 'R-12', 'banco'],
+      [9, 21, 'gasto', /lotería/i, 120000, 'Compra de décimos de Navidad', 'Administración de lotería', 'F-901', 'banco'],
+    ];
+    lista.forEach(function (x) {
+      var d = new Date(+rg.desde.slice(0, 4), +rg.desde.slice(5, 7) - 1 + x[0], x[1]), f = A.fechaISO(d);
+      if (f > hoy) return;
+      if (x[2] === 'traspaso') return A.guardarApunte(db, { tipo: 'traspaso', fecha: f, importeCent: x[4], cuentaId: 'caja', cuentaDestinoId: 'banco', concepto: x[5] });
+      A.guardarApunte(db, { tipo: x[2], fecha: f, importeCent: x[4], cuentaId: x[8], partidaId: p(x[3], x[2]), concepto: x[5], tercero: x[6], documento: x[7] });
+    });
+    var pres = {}; pres.cuotas = 150000; pres[p(/Subvenciones/, 'ingreso')] = 60000; pres[p(/Seguros/, 'gasto')] = 40000; pres[p(/Comisiones/, 'gasto')] = 22000;
+    pres[p(/Suministros/, 'gasto')] = 30000; pres[p(/Material de oficina/, 'gasto')] = 10000; pres.actividades = 40000;
+    A.fijarPresupuesto(db, ej, pres);
+  }
+
   A.rellenarEjemplo = function (db) {
     db.ejemplo = true;
     db.entidad.logo = A.escudoEjemplo(db.entidad.nombre, db.entidad.perfil);
@@ -3063,6 +3468,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     db.cargos.forEach(function (c, i) { if (c.formaPago !== 'domiciliacion' && i % 3 === 0) A.marcarPagado(db, c.id, c.formaPago); });
     if (db.entidad.perfil === 'hermandad') ejemploCofradia(db, rnd, elige);
     ejemploActividades(db, rnd, elige);
+    ejemploTesoreria(db);
     db.ultimaCopia = null;
     A.log(db, 'Cargados datos de ejemplo (inventados)');
   };
@@ -3101,14 +3507,44 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       kpi(r.activos, v.Miembros + ' de alta') + kpi(r.altasAnio, 'Altas este año') +
       kpi(A.euros(r.pendientesCent), 'Pendiente de cobro (' + r.pendientesN + ')') + kpi(A.euros(r.cobradoAnioCent), 'Cobrado este año') +
       (A.usaCondicion(db) ? kpi(A.censoVotantes(db).length, 'Con derecho a voto en cabildo') : '') +
+      (db.tesoreria && db.tesoreria.inicio ? kpi(A.euros(Object.values(A.saldos(db, A.hoyISO())).reduce(function (x, y) { return x + y; }, 0)), 'Saldo en banco y caja') : '') +
       (salidaAbierta ? kpi(A.resumenSalida(db, salidaAbierta.id).pagadas, 'Tarjetas pagadas · ' + salidaAbierta.nombre) : '') + '</div>' +
+      primerosPasosHTML(db) +
       '<section class="tarjeta"><h2>Avisos</h2>' + (avisos.length ? '<ul class="lista-avisos">' + avisos.map(function (a) {
         return '<li>' + A.icono(a[0] === 'info' ? 'ayuda' : 'aviso', 20) + '<span style="flex:1">' + A.esc(a[1]) + '</span><a class="boton" href="' + a[2] + '">' + a[3] + '</a></li>';
       }).join('') + '</ul>' : '<p class="gris">Todo en orden.</p>') + '</section>' +
       '<section class="tarjeta"><h2>Actividad reciente</h2>' + (db.registro.length ? '<ul class="lista-avisos">' + db.registro.slice(0, 8).map(function (l) {
         return '<li><span class="gris mono" style="min-width:150px">' + A.fechaES(l.fecha) + ' ' + l.fecha.slice(11, 16) + '</span>' + A.esc(l.accion) + '</li>';
       }).join('') + '</ul>' : '<p class="gris">Sin actividad.</p>') + '</section>';
+    var bo = A.$('[data-ocultar-pasos]', c);
+    if (bo) bo.addEventListener('click', function () { db.ajustes.ocultarPrimerosPasos = true; A.guardar(); A.pintar(); });
   };
+  /* Puesta en marcha: lo imprescindible para empezar con buen pie, con enlace a cada sitio */
+  A.primerosPasos = function (db) {
+    var v = A.vocab(db), e = db.entidad, dom = db.miembros.some(function (m) { return m.formaPago === 'domiciliacion' && m.estado === 'alta'; });
+    var l = [
+      ['entidad', 'Completa los datos de la entidad (NIF, dirección y correo)', !!(e.nif && e.direccion && e.email), '#/configuracion'],
+      ['llave', 'Imprime la llave de recuperación y guárdala fuera del ordenador', A.llaveCreada() !== null, '#/datos'],
+      ['cuotas', 'Crea los tipos de cuota que cobráis', db.tiposCuota.length > 0, '#/cuotas?pestana=tipos'],
+      ['miembros', 'Da de alta a los ' + v.miembros + ' o importa vuestro Excel', db.miembros.length > 0, '#/miembros'],
+      ['banco', 'Añade el IBAN y el identificador de acreedor SEPA para cobrar por banco', A.validaIBAN(db.sepa.iban) && A.validaIdentificadorAcreedor(db.sepa.identificador), '#/configuracion', !dom],
+      ['tesoreria', 'Indica el dinero con el que empezáis en el banco y en la caja', !!(db.tesoreria && db.tesoreria.inicio), '#/tesoreria?pestana=ajustes'],
+      ['copia', 'Activa el guardado automático en un fichero o descarga una copia', A.S.estadoFichero === 'activo' || !!db.ultimaCopia, '#/datos'],
+      ['escudo', 'Sube el escudo o logotipo para los impresos (opcional)', !!e.logo, '#/configuracion'],
+    ].filter(function (x) { return !x[4]; });
+    return { pasos: l, hechos: l.filter(function (x) { return x[2]; }).length };
+  };
+  function primerosPasosHTML(db) {
+    if (db.ejemplo || db.ajustes.ocultarPrimerosPasos) return '';
+    var pp = A.primerosPasos(db);
+    if (pp.hechos === pp.pasos.length) return '';
+    return '<section class="tarjeta" id="primeros-pasos"><div class="titulo-pagina" style="margin:0"><h2 style="margin:0">Primeros pasos · ' + pp.hechos + ' de ' + pp.pasos.length + '</h2>' +
+      '<button class="mini" data-ocultar-pasos>Ocultar</button></div><progress max="' + pp.pasos.length + '" value="' + pp.hechos + '" aria-label="Pasos hechos"></progress>' +
+      '<ul class="lista-avisos lista-pasos">' + pp.pasos.map(function (x) {
+        return '<li class="' + (x[2] ? 'hecho' : '') + '">' + A.icono(x[2] ? 'ok' : 'mas', 20) + '<span style="flex:1">' + A.esc(x[1]) + '</span>' + (x[2] ? '<span class="gris">Hecho</span>' : '<a class="boton" href="' + x[3] + '">Ir</a>') + '</li>';
+      }).join('') + '</ul></section>';
+  }
+
   function kpi(valor, etiqueta) { return '<div class="kpi"><div class="valor">' + A.esc(valor) + '</div><div class="etiqueta">' + A.esc(etiqueta) + '</div></div>'; }
 
   /* ---------------- MIEMBROS ---------------- */
@@ -4001,6 +4437,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       bloque('Actividades y lotería', '<p>En <a href="#/actividades">Actividades</a> crea la excursión, comida o campamento con sus precios y plazas, inscribe a ' + v.miembros + ' o a personas de fuera y registra los pagos, también a plazos. Para la lotería, crea una actividad de tipo «Lotería», entrega los talonarios a cada responsable y liquídalos cuando devuelvan el dinero.</p>') +
       (A.usaEnseres(db) ? bloque(A.nombreEnseres(db) + ' y préstamos', '<p>Da de alta las piezas (o muchas a la vez con «Alta de varias piezas»), préstalas con fecha de devolución y fianza, e imprime el recibo para firmar. El panel avisa de los préstamos fuera de plazo.</p>') : '') +
       (A.usaDonativos(db) ? bloque('Donativos y modelo 182', '<p>Marca como deducibles los tipos de cuota de afiliación y registra los donativos sueltos. En <a href="#/donativos">Donativos</a> imprime los certificados y descarga en enero el fichero del modelo 182 para subirlo en la sede de la Agencia Tributaria (Presentación mediante fichero). La sede revisa el fichero antes de presentarlo: si avisa de algún error, corrígelo y vuelve a descargarlo.</p>') : '') +
+      bloque('Tesorería y libro de caja', '<p>En <a href="#/tesoreria">Tesorería</a> indica primero el dinero con el que empezáis en el banco y en la caja. Las cuotas, remesas cobradas, recibos devueltos, tarjetas, actividades, lotería, donativos y fianzas entran solos en el libro; apunta a mano los gastos y los demás ingresos, con su partida y el número de factura. ' +
+        '«Comprobar saldo» compara el libro con el extracto del banco o con el dinero contado. Para la asamblea, prepara el presupuesto e imprime el <strong>estado de cuentas</strong> del ejercicio, o descárgalo en Excel.</p>') +
       bloque('¿Y si se olvida la contraseña?', '<p>En la pantalla de entrada, pulsa «¿Habéis olvidado la contraseña?» y escribe la <strong>llave de recuperación</strong> impresa: entraréis y elegiréis una contraseña nueva. La llave también abre las copias de seguridad hechas después de crearla. Puedes crear una llave nueva en <a href="#/datos">Datos y copias</a> si la anterior se pierde.</p>') +
       bloque('Importar desde Excel', '<p>En ' + v.Miembros + ' › Importar elige vuestro Excel, hoja de LibreOffice o CSV. Comprueba el emparejamiento de columnas y la revisión (altas, actualizaciones y filas con errores) antes de pulsar «Importar». Quien ya estaba se completa, no se duplica.</p>') +
       (v.salidas ? bloque('Cortejo por tramos', '<p>En Salidas › Cortejo crea los tramos y pulsa «Repartir por antigüedad». Ajusta insignias, diputados y parejas de cada tramo, mueve a quien haga falta e imprime las hojas de los diputados.</p>') : '') +
@@ -5079,10 +5517,316 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
 })(A);
 
+/* Alcancía · pantalla de tesorería: resumen, libro de caja, presupuesto y ajustes */
+'use strict';
+(function (A) {
+  var fl = { cuentaId: '', partidaId: '', mes: '', texto: '' };
+  var PEST = [['resumen', 'Resumen'], ['libro', 'Libro de caja'], ['presupuesto', 'Presupuesto'], ['ajustes', 'Cuentas y partidas']];
+  var euros = function (c) { return A.euros(c || 0); };
+  var importeCampo = function (c) { return c ? A.decimalPunto(c).replace('.', ',') : ''; };
+
+  A.rutas.tesoreria = function (c, params) {
+    var db = A.S.db, t = A.tes(db), ejs = A.ejerciciosConDatos(db), ej = +params.ej || A.ejercicioActual(db), pest = params.pestana || 'resumen';
+    if (ejs.indexOf(ej) < 0) ejs.push(ej);
+    ejs.sort(function (a, b) { return b - a; });
+    var ir = function (p, e) { A.ir('tesoreria?pestana=' + (p || pest) + '&ej=' + (e || ej)); };
+    c.innerHTML = '<div class="titulo-pagina"><h1>Tesorería</h1>' +
+      '<button data-t="gasto">' + A.icono('mas') + ' Gasto</button><button data-t="ingreso">' + A.icono('mas') + ' Ingreso</button><button data-t="traspaso">Traspaso</button>' +
+      '<button data-t="arqueo">Comprobar saldo</button></div>' +
+      '<div class="barra"><div>' + A.campo('ej', 'Ejercicio', ej, { opciones: ejs.map(function (e) { return [e, A.nombreEjercicio(db, e)]; }) }) + '</div><div class="crece"></div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button data-t="estado">' + A.icono('imprimir') + ' Estado de cuentas</button><button data-t="excel">' + A.icono('bajar') + ' Excel</button></div></div>' +
+      (!t.inicio ? '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p><strong>Indica con cuánto dinero empezáis</strong> en el banco y en la caja para que los saldos sean reales. Los cobros que ya registra ' + A.APP.nombre + ' entran solos en el libro.</p>' +
+        '<p><button class="principal" data-t="inicio">Indicar el saldo inicial</button></p></div></div>' : '') +
+      '<div class="pestanas" role="tablist">' + PEST.map(function (p) { return '<button role="tab" aria-selected="' + (pest === p[0]) + '" data-pest="' + p[0] + '">' + p[1] + '</button>'; }).join('') + '</div>' +
+      '<div id="contenido-tes"></div>';
+    A.$('select[name=ej]', c).addEventListener('change', function (e) { ir(null, e.target.value); });
+    c.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pest]'); if (b) return ir(b.getAttribute('data-pest'));
+      b = e.target.closest('[data-t]'); if (!b) return;
+      var k = b.getAttribute('data-t');
+      if (k === 'gasto' || k === 'ingreso' || k === 'traspaso') A.dialogoApunte(db, { tipo: k });
+      if (k === 'arqueo') dialogoArqueo(db);
+      if (k === 'inicio') dialogoInicio(db);
+      if (k === 'estado') imprimirEstado(db, ej);
+      if (k === 'excel') {
+        A.descargar(A.nombreFichero(db.entidad.nombre) + '-tesoreria-' + A.nombreEjercicio(db, ej) + '.xlsx', new Blob([A.crearXLSX(A.hojasTesoreria(db, ej))], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        A.log(db, 'Exportación de la tesorería ' + A.nombreEjercicio(db, ej)); A.guardar();
+      }
+    });
+    var cont = A.$('#contenido-tes', c);
+    if (pest === 'libro') return libro(cont, db, ej);
+    if (pest === 'presupuesto') return presupuesto(cont, db, ej);
+    if (pest === 'ajustes') return ajustes(cont, db);
+    resumen(cont, db, ej);
+  };
+
+  /* ---------- resumen ---------- */
+  function resumen(cont, db, ej) {
+    var r = A.resumenEjercicio(db, ej), t = A.tes(db), actual = ej === A.ejercicioActual(db), corte = actual ? A.hoyISO() : r.hasta;
+    var saldos = actual ? A.saldos(db, corte) : r.saldosFinales, meses = A.mesesEjercicio(db, ej);
+    var max = Math.max.apply(null, meses.map(function (m) { return Math.max(m.ingresos, m.gastos); }).concat([1]));
+    var tabla = function (titulo, filas, total, pres) {
+      var vis = filas.filter(function (x) { return x.realCent || x.presupuestoCent; });
+      return '<section class="tarjeta"><h2>' + titulo + '</h2>' + (vis.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Partida</th>' + (r.hayPresupuesto ? '<th class="num">Presupuesto</th>' : '') + '<th class="num">Real</th>' + (r.hayPresupuesto ? '<th class="num">Ejecutado</th>' : '') + '</tr></thead><tbody>' +
+        vis.map(function (x) {
+          return '<tr class="clicable" data-partida="' + x.p.id + '" tabindex="0"' + (x.p.auto ? ' title="Se calcula sola con los cobros registrados"' : '') + '><td>' + A.esc(x.p.nombre) + '</td>' + (r.hayPresupuesto ? '<td class="num">' + euros(x.presupuestoCent) + '</td>' : '') +
+            '<td class="num">' + euros(x.realCent) + '</td>' + (r.hayPresupuesto ? '<td class="num">' + (x.presupuestoCent ? Math.round(x.realCent * 100 / x.presupuestoCent) + ' %' : '—') + '</td>' : '') + '</tr>';
+        }).join('') + '<tr><td><strong>Total</strong></td>' + (r.hayPresupuesto ? '<td class="num"><strong>' + euros(pres) + '</strong></td>' : '') + '<td class="num"><strong>' + euros(total) + '</strong></td>' + (r.hayPresupuesto ? '<td></td>' : '') + '</tr></tbody></table></div>'
+        : '<p class="gris">Sin movimientos en este ejercicio.</p>') + '</section>';
+    };
+    cont.innerHTML = '<div class="rejilla">' + t.cuentas.map(function (cu) { return A.kpi(euros(saldos[cu.id]), cu.nombre + (actual ? ' · hoy' : ' · a ' + A.fechaES(corte))); }).join('') +
+      A.kpi(euros(r.totalIngresos), 'Ingresos del ejercicio') + A.kpi(euros(r.totalGastos), 'Gastos del ejercicio') + A.kpi(euros(r.resultado), r.resultado >= 0 ? 'Superávit' : 'Déficit') + '</div>' +
+      '<section class="tarjeta"><h2>Mes a mes</h2><div class="grafica-meses" role="img" aria-label="Ingresos y gastos de cada mes del ejercicio">' + meses.map(function (m) {
+        var tit = A.MESES[m.mes] + ' ' + m.anio + ': ingresos ' + euros(m.ingresos) + ', gastos ' + euros(m.gastos);
+        return '<div class="mes" title="' + A.esc(tit) + '"><div class="barras"><span class="b-ing" style="height:' + Math.round(Math.max(0, m.ingresos) * 100 / max) + '%"></span><span class="b-gas" style="height:' + Math.round(Math.max(0, m.gastos) * 100 / max) + '%"></span></div><span class="etq">' + A.MESES[m.mes].slice(0, 3) + '</span></div>';
+      }).join('') + '</div><p class="leyenda-grafica"><span class="cuadro b-ing"></span>Ingresos <span class="cuadro b-gas"></span>Gastos</p></section>' +
+      '<div class="dos-columnas">' + tabla('Ingresos', r.ingresos, r.totalIngresos, r.presIngresos) + tabla('Gastos', r.gastos, r.totalGastos, r.presGastos) + '</div>' +
+      '<section class="tarjeta"><h2>Para tener en cuenta</h2><ul>' +
+      '<li>Cuotas pendientes de cobro: <strong>' + euros(r.pendienteCobroCent) + '</strong> (' + r.pendienteCobroN + ' recibos). <a href="#/cuotas">Ver</a></li>' +
+      (r.fianzasEnDeposito ? '<li>Fianzas en depósito (no son de la entidad, se devolverán): <strong>' + euros(r.fianzasEnDeposito) + '</strong>.</li>' : '') +
+      (r.inicioPosterior ? '<li>El saldo inicial es del ' + A.fechaES(t.inicio.fecha) + ': los movimientos anteriores salen en el resumen, pero no cambian los saldos.</li>' : '') +
+      '<li class="gris">Las cuotas, remesas, tarjetas, actividades, lotería, donativos y fianzas entran solos. Apunta a mano los gastos y los demás ingresos (subvenciones, colectas, comisiones del banco…).</li></ul></section>';
+    cont.addEventListener('click', function (e) { var b = e.target.closest('[data-partida]'); if (b) { fl.partidaId = b.getAttribute('data-partida'); fl.cuentaId = ''; fl.mes = ''; A.ir('tesoreria?pestana=libro&ej=' + ej); } });
+  }
+
+  /* ---------- libro de caja ---------- */
+  function libro(cont, db, ej) {
+    var t = A.tes(db), rg = A.rangoEjercicio(db, ej), meses = A.mesesEjercicio(db, ej);
+    if (fl.cuentaId && !A.cuentaPorId(db, fl.cuentaId)) fl.cuentaId = '';
+    cont.innerHTML = '<div class="barra">' +
+      '<div>' + A.campo('cuenta', 'Cuenta', fl.cuentaId, { opciones: [['', 'Todas']].concat(t.cuentas.map(function (x) { return [x.id, x.nombre]; })) }) + '</div>' +
+      '<div>' + A.campo('partida', 'Partida', fl.partidaId, { opciones: [['', 'Todas']].concat(t.partidas.map(function (p) { return [p.id, (p.tipo === 'gasto' ? 'Gasto · ' : p.tipo === 'ingreso' ? 'Ingreso · ' : '') + p.nombre]; })) }) + '</div>' +
+      '<div>' + A.campo('mes', 'Mes', fl.mes, { opciones: [['', 'Todo el ejercicio']].concat(meses.map(function (m) { return [m.anio + '-' + String(m.mes + 1).padStart(2, '0'), A.MESES[m.mes] + ' ' + m.anio]; })) }) + '</div>' +
+      '<div class="crece">' + A.campo('texto', 'Buscar', fl.texto, { tipo: 'search', ph: 'Concepto, proveedor o nº de factura' }) + '</div></div><div id="lista-libro"></div>';
+    var pinta = function () {
+      var desde = fl.mes ? fl.mes + '-01' : rg.desde, hasta = fl.mes ? A.fechaISO(new Date(+fl.mes.slice(0, 4), +fl.mes.slice(5, 7), 0)) : rg.hasta;
+      var l = A.libroCaja(db, desde, hasta, { cuentaId: fl.cuentaId, partidaId: fl.partidaId }), q = A.normaliza(fl.texto);
+      var filas = l.filas.filter(function (f) { return !q || [f.m.concepto, f.m.tercero, f.m.documento].some(function (z) { return A.normaliza(z).indexOf(q) >= 0; }); });
+      var conSaldo = !fl.partidaId && !q, ing = 0, gas = 0;
+      filas.forEach(function (f) { var n = A.netoMovimiento(f.m); if (n > 0) ing += n; else gas -= n; });
+      var nomP = function (id) { var p = A.partidaPorId(db, id); return p ? p.nombre : ''; }, nomC = function (id) { var x = A.cuentaPorId(db, id); return x ? x.nombre : ''; };
+      var vistas = filas.length > 600 ? filas.slice(-600) : filas;
+      A.$('#lista-libro', cont).innerHTML = '<p class="gris" aria-live="polite">' + filas.length + ' movimientos · ingresos ' + euros(ing) + ' · gastos ' + euros(gas) +
+        (conSaldo ? ' · saldo inicial ' + euros(l.inicial) + ' · saldo final ' + euros(l.final) : '') + (filas.length > vistas.length ? ' · se muestran los ' + vistas.length + ' últimos (el Excel los tiene todos)' : '') + '</p>' +
+        (filas.length ? '<div class="tabla-envoltorio"><table class="libro"><thead><tr><th>Fecha</th><th>Concepto</th><th>Partida</th><th>Cuenta</th><th class="num">Ingreso</th><th class="num">Gasto</th>' + (conSaldo ? '<th class="num">Saldo</th>' : '') + '</tr></thead><tbody>' +
+          vistas.map(function (f) {
+            var m = f.m, n = A.netoMovimiento(m), extra = [m.tercero, m.documento ? 'Doc. ' + m.documento : ''].filter(Boolean).join(' · ');
+            return '<tr class="clicable" tabindex="0" ' + (m.auto ? 'data-enlace="' + A.esc(m.enlace) + '"' : 'data-apunte="' + m.apunte.id + '"') + '><td class="nowrap">' + A.fechaES(m.fecha) + '</td>' +
+              '<td>' + A.esc(m.concepto || A.TIPOS_APUNTE[m.tipo]) + (extra ? '<br><span class="gris">' + A.esc(extra) + '</span>' : '') + (m.auto ? ' ' + A.etiquetaEstado('automático', 'neutro') : '') + '</td>' +
+              '<td>' + A.esc(m.tipo === 'traspaso' ? 'Traspaso' : nomP(m.partidaId)) + '</td><td>' + A.esc(nomC(m.cuentaId)) + '</td>' +
+              '<td class="num">' + (n > 0 ? euros(n) : '') + '</td><td class="num">' + (n < 0 ? euros(-n) : '') + '</td>' + (conSaldo ? '<td class="num">' + euros(f.saldo) + '</td>' : '') + '</tr>';
+          }).join('') + '</tbody></table></div>' : '<div class="tarjeta vacio">No hay movimientos con estos filtros.</div>');
+    };
+    pinta();
+    ['cuenta', 'partida', 'mes'].forEach(function (k) {
+      A.$('select[name=' + k + ']', cont).addEventListener('change', function (e) { fl[k === 'cuenta' ? 'cuentaId' : k === 'partida' ? 'partidaId' : 'mes'] = e.target.value; pinta(); });
+    });
+    A.$('input[name=texto]', cont).addEventListener('input', A.debounce(function (e) { fl.texto = e.target.value; pinta(); }, 150));
+    var abrir = function (tr) {
+      if (tr.hasAttribute('data-apunte')) { var a = db.apuntes.find(function (x) { return x.id === tr.getAttribute('data-apunte'); }); if (a) A.dialogoApunte(db, a); }
+      else if (tr.getAttribute('data-enlace')) A.ir(tr.getAttribute('data-enlace'));
+    };
+    cont.addEventListener('click', function (e) { var tr = e.target.closest('tr.clicable'); if (tr) abrir(tr); });
+    cont.addEventListener('keydown', function (e) { var tr = e.target.closest('tr.clicable'); if (tr && e.key === 'Enter') abrir(tr); });
+  }
+
+  /* ---------- apunte ---------- */
+  A.dialogoApunte = function (db, a) {
+    var t = A.tes(db), nuevo = !a.id, x = Object.assign({ tipo: 'gasto', fecha: A.hoyISO(), importeCent: 0, cuentaId: (t.cuentas.find(function (c) { return c.tipo === 'banco'; }) || t.cuentas[0]).id, cuentaDestinoId: '', partidaId: '', concepto: '', tercero: '', documento: '', observaciones: '' }, a);
+    if (x.tipo === 'traspaso' && !x.cuentaDestinoId) { x.cuentaId = A.cuentaDeForma(db, 'efectivo'); x.cuentaDestinoId = A.cuentaDeForma(db, 'transferencia'); x.concepto = x.concepto || 'Ingreso de efectivo en el banco'; }
+    var cuentas = t.cuentas.map(function (c) { return [c.id, c.nombre]; });
+    var opcionesPartida = function (tipo) {
+      return A.partidasDe(db, tipo).filter(function (p) { return tipo === 'gasto' || p.id !== 'tarjetas' || A.vocab(db).salidas; })
+        .concat(A.partidasDe(db, 'fianza')).map(function (p) { return [p.id, p.nombre]; });
+    };
+    var botones = [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+      var f = A.leerForm(A.$('#f-apunte', r));
+      A.guardarApunte(db, { id: a.id, tipo: f.tipo, fecha: f.fecha, importeCent: A.aCentimos(f.importe), cuentaId: f.cuentaId, cuentaDestinoId: f.cuentaDestinoId, partidaId: f.partidaId,
+        concepto: f.concepto, tercero: f.tercero, documento: f.documento, observaciones: f.observaciones });
+      A.guardar();
+    } }];
+    if (!nuevo) botones.unshift({ texto: 'Borrar', valor: 'borrar', clase: 'peligro', izq: true });
+    A.modal({ titulo: nuevo ? (x.tipo === 'traspaso' ? 'Traspaso entre cuentas' : 'Nuevo ' + x.tipo) : 'Apunte del ' + A.fechaES(x.fecha), ancho: true,
+      html: '<form id="f-apunte" novalidate><div class="columnas">' +
+        A.campo('tipo', 'Tipo', x.tipo, { opciones: Object.keys(A.TIPOS_APUNTE).map(function (k) { return [k, A.TIPOS_APUNTE[k]]; }) }) +
+        A.campo('fecha', 'Fecha', x.fecha, { tipo: 'date', requerido: true }) +
+        A.campo('importe', 'Importe (€)', importeCampo(x.importeCent), { attrs: ' inputmode="decimal" autocomplete="off"', requerido: true }) +
+        A.campo('cuentaId', 'Cuenta', x.cuentaId, { opciones: cuentas }) +
+        '<div class="solo-traspaso">' + A.campo('cuentaDestinoId', 'Hacia la cuenta', x.cuentaDestinoId, { opciones: cuentas }) + '</div>' +
+        '<div class="no-traspaso">' + A.campo('partidaId', 'Partida', x.partidaId, { opciones: opcionesPartida(x.tipo === 'traspaso' ? 'gasto' : x.tipo) }) + '</div></div>' +
+        A.campo('concepto', 'Concepto', x.concepto, { ph: 'Flores para el besamanos, subvención del Ayuntamiento…' }) +
+        '<div class="columnas no-traspaso">' + A.campo('tercero', 'Proveedor o pagador', x.tercero, { ph: 'Floristería, Ayuntamiento…' }) + A.campo('documento', 'Nº de factura o justificante', x.documento) + '</div>' +
+        A.campo('observaciones', 'Observaciones', x.observaciones, { tipo: 'textarea' }) + '</form>',
+      alAbrir: function (r) {
+        var sel = A.$('select[name=tipo]', r), par = A.$('select[name=partidaId]', r);
+        var ver = function () {
+          var tr = sel.value === 'traspaso';
+          A.$$('.solo-traspaso', r).forEach(function (e) { e.classList.toggle('oculto', !tr); }); A.$$('.no-traspaso', r).forEach(function (e) { e.classList.toggle('oculto', tr); });
+          if (!tr) { var v = par.value; par.innerHTML = opcionesPartida(sel.value).map(function (o) { return '<option value="' + o[0] + '">' + A.esc(o[1]) + '</option>'; }).join(''); if (A.partidaPorId(db, v) && opcionesPartida(sel.value).some(function (o) { return o[0] === v; })) par.value = v; }
+        };
+        ver(); sel.addEventListener('change', ver);
+        if (nuevo && !x.partidaId && x.tipo === 'gasto') { var o = A.partidasDe(db, 'gasto')[0]; if (o) par.value = o.id; }
+        A.$('input[name=importe]', r).focus();
+      },
+      botones: botones }).then(function (r) {
+      if (r === 'borrar') return A.confirmar('Borrar apunte', 'Se borrará el apunte de ' + euros(x.importeCent) + ' del ' + A.fechaES(x.fecha) + '.', 'Borrar', true).then(function (ok) { if (ok) { A.borrarApunte(db, a.id); A.guardar(); A.pintar(); } });
+      if (r) { A.toast('Apunte guardado.'); A.pintar(); }
+    });
+  };
+
+  /* ---------- saldo inicial y arqueo ---------- */
+  function dialogoInicio(db) {
+    var t = A.tes(db), ini = t.inicio || { fecha: A.rangoEjercicio(db, A.ejercicioActual(db)).desde, saldos: {} };
+    A.modal({ titulo: 'Saldo inicial', html: '<p>Indica el dinero que había en cada cuenta al empezar ese día (el extracto del banco y el efectivo contado). Desde esa fecha, ' + A.APP.nombre + ' calcula los saldos.</p>' +
+      '<form id="f-ini" novalidate>' + A.campo('fecha', 'Fecha', ini.fecha, { tipo: 'date', ayuda: 'Normalmente, el primer día del ejercicio.' }) +
+      t.cuentas.map(function (c) { return A.campo('s_' + c.id, c.nombre + ' (€)', ini.saldos[c.id] ? importeCampo(ini.saldos[c.id]) : '0', { attrs: ' inputmode="decimal"' }); }).join('') + '</form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-ini', r)), s = {};
+        t.cuentas.forEach(function (c) { var v = String(f['s_' + c.id] || '0').trim(); var n = A.aCentimos(v.replace(/^-/, '')); if (n === null || isNaN(n)) throw new Error('El saldo de «' + c.nombre + '» no es válido.'); s[c.id] = /^-/.test(v) ? -n : n; });
+        A.fijarInicio(db, f.fecha, s); A.guardar();
+      } }] }).then(function (r) { if (r) A.pintar(); });
+  }
+  function dialogoArqueo(db) {
+    var t = A.tes(db);
+    A.modal({ titulo: 'Comprobar el saldo', html: '<p>Escribe el saldo que marca el extracto del banco, o el dinero contado en la caja, a una fecha. Se compara con el libro.</p>' +
+      '<form id="f-arq" novalidate><div class="columnas">' + A.campo('cuentaId', 'Cuenta', t.cuentas[0].id, { opciones: t.cuentas.map(function (c) { return [c.id, c.nombre]; }) }) +
+      A.campo('fecha', 'Fecha', A.hoyISO(), { tipo: 'date' }) + A.campo('real', 'Saldo real (€)', '', { attrs: ' inputmode="decimal"' }) + '</div></form><div id="res-arq" aria-live="polite"></div>',
+      alAbrir: function (r) {
+        var calc = function () {
+          var f = A.leerForm(A.$('#f-arq', r)), libro = A.saldos(db, f.fecha || A.hoyISO())[f.cuentaId] || 0, real = A.aCentimos(f.real);
+          A.$('#res-arq', r).innerHTML = '<p>Según el libro: <strong>' + euros(libro) + '</strong>' + (f.real && !isNaN(real) ? ' · diferencia: <strong>' + euros(real - libro) + '</strong>' +
+            (real === libro ? ' ' + A.etiquetaEstado('cuadra', 'ok') : '<br><span class="gris">Revisa si falta apuntar algún gasto (comisiones, recibos) o ingreso. Si no lo encuentras, puedes apuntar la diferencia.</span>') : '') + '</p>';
+        };
+        calc(); A.$('#f-arq', r).addEventListener('input', calc); A.$('#f-arq', r).addEventListener('change', calc);
+      },
+      botones: [{ texto: 'Cerrar', valor: false }, { texto: 'Apuntar la diferencia', valor: 'ajustar', antes: leer }, { texto: 'Guardar comprobación', valor: true, clase: 'principal', antes: leer }] })
+      .then(function (r) {
+        if (!r) return;
+        var res = A.arqueo(db, leer.d.cuentaId, leer.d.fecha, leer.d.real, r === 'ajustar'); A.guardar();
+        A.toast(res.diferenciaCent ? 'Diferencia de ' + euros(res.diferenciaCent) + (r === 'ajustar' ? ': apuntada.' : '.') : 'El saldo cuadra.'); A.pintar();
+      });
+    function leer(r) {
+      var f = A.leerForm(A.$('#f-arq', r)), real = A.aCentimos(String(f.real).replace(/^-/, ''));
+      if (!f.real || real === null || isNaN(real)) throw new Error('Escribe el saldo real.');
+      leer.d = { cuentaId: f.cuentaId, fecha: f.fecha || A.hoyISO(), real: /^-/.test(f.real) ? -real : real };
+    }
+  }
+
+  /* ---------- presupuesto ---------- */
+  function presupuesto(cont, db, ej) {
+    var t = A.tes(db), r = A.resumenEjercicio(db, ej), pres = t.presupuestos[ej] || {};
+    var fila = function (x) { return '<tr><td>' + A.esc(x.p.nombre) + '</td><td class="num"><input class="importe-pres" name="p_' + x.p.id + '" inputmode="decimal" aria-label="Presupuesto de ' + A.esc(x.p.nombre) + '" value="' + importeCampo(pres[x.p.id]) + '"></td><td class="num">' + euros(x.realCent) + '</td></tr>'; };
+    var bloque = function (titulo, filas) { return '<section class="tarjeta"><h2>' + titulo + '</h2><div class="tabla-envoltorio"><table><thead><tr><th>Partida</th><th class="num">Presupuesto (€)</th><th class="num">Real</th></tr></thead><tbody>' + filas.map(fila).join('') + '</tbody></table></div></section>'; };
+    cont.innerHTML = '<p>Lo que la junta prevé ingresar y gastar en el ejercicio ' + A.nombreEjercicio(db, ej) + '. Se compara con lo real en el resumen y en el estado de cuentas.</p>' +
+      '<div class="fila-acciones" style="justify-content:flex-start;margin-bottom:12px"><button data-p="real">Rellenar con lo real de ' + A.nombreEjercicio(db, ej - 1) + '</button>' +
+      (t.presupuestos[ej - 1] ? '<button data-p="presupuesto">Copiar el presupuesto de ' + A.nombreEjercicio(db, ej - 1) + '</button>' : '') + '<button data-p="imprimir">' + A.icono('imprimir') + ' Imprimir</button></div>' +
+      '<form id="f-pres" novalidate><div class="dos-columnas">' + bloque('Ingresos', r.ingresos) + bloque('Gastos', r.gastos) + '</div>' +
+      '<p id="tot-pres" class="gris" aria-live="polite"></p><button class="principal" type="submit">Guardar el presupuesto</button></form>';
+    var form = A.$('#f-pres', cont);
+    var leer = function () { var v = {}; A.$$('input.importe-pres', form).forEach(function (i) { var n = A.aCentimos(i.value || '0'); if (n === null || isNaN(n)) throw new Error('Revisa el importe de ' + i.getAttribute('aria-label').replace('Presupuesto de ', '') + '.'); v[i.name.slice(2)] = n; }); return v; };
+    var totales = function () {
+      try { var v = leer(), ing = 0, gas = 0; r.ingresos.forEach(function (x) { ing += v[x.p.id] || 0; }); r.gastos.forEach(function (x) { gas += v[x.p.id] || 0; });
+        A.$('#tot-pres', cont).textContent = 'Ingresos ' + euros(ing) + ' · gastos ' + euros(gas) + ' · ' + (ing - gas >= 0 ? 'superávit ' : 'déficit ') + euros(Math.abs(ing - gas)); } catch (e) { /* mientras escribe */ }
+    };
+    totales(); form.addEventListener('input', totales);
+    form.addEventListener('submit', function (e) { e.preventDefault(); try { A.fijarPresupuesto(db, ej, leer()); A.guardar(); A.toast('Presupuesto guardado.'); A.pintar(); } catch (err) { A.toast(err.message, 'mal'); } });
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-p]'); if (!b) return;
+      var k = b.getAttribute('data-p');
+      if (k === 'imprimir') return imprimirPresupuesto(db, ej);
+      var p = A.propuestaPresupuesto(db, ej, k);
+      A.$$('input.importe-pres', form).forEach(function (i) { i.value = importeCampo(p[i.name.slice(2)]); });
+      totales(); A.toast('Revisa los importes y pulsa «Guardar el presupuesto».');
+    });
+  }
+
+  /* ---------- cuentas, partidas y ejercicio ---------- */
+  function ajustes(cont, db) {
+    var t = A.tes(db), usadas = {};
+    A.movimientos(db).forEach(function (m) { usadas[m.cuentaId] = 1; if (m.partidaId) usadas[m.partidaId] = 1; });
+    var lista = function (tipo, titulo) {
+      return '<h3>' + titulo + '</h3><ul class="lista-simple">' + A.partidasDe(db, tipo).map(function (p) {
+        return '<li><span class="crece">' + A.esc(p.nombre) + (p.auto ? ' <span class="gris">· automático</span>' : '') + '</span><button class="mini" data-ren="' + p.id + '">Cambiar nombre</button>' +
+          (p.auto ? '' : '<button class="mini" data-borp="' + p.id + '">Borrar</button>') + '</li>';
+      }).join('') + '</ul><button class="mini" data-nuevap="' + tipo + '">' + A.icono('mas') + ' Añadir partida de ' + (tipo === 'ingreso' ? 'ingresos' : 'gastos') + '</button>';
+    };
+    cont.innerHTML = '<section class="tarjeta"><h2>Saldo inicial y ejercicio</h2>' +
+      (t.inicio ? '<p>Saldo inicial a ' + A.fechaES(t.inicio.fecha) + ': ' + t.cuentas.map(function (c) { return A.esc(c.nombre) + ' <strong>' + euros(t.inicio.saldos[c.id]) + '</strong>'; }).join(' · ') + '</p>' : '<p>Todavía no se ha indicado el saldo inicial.</p>') +
+      '<div class="barra"><div>' + A.campo('mesInicio', 'El ejercicio empieza en', t.mesInicio || 1, { opciones: A.MESES.map(function (m, i) { return [i + 1, m]; }), ayuda: 'Enero para el año natural; septiembre si coincide con el curso.' }) + '</div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button data-a="inicio">' + (t.inicio ? 'Cambiar el saldo inicial' : 'Indicar el saldo inicial') + '</button></div></div></section>' +
+      '<section class="tarjeta"><h2>Cuentas</h2><ul class="lista-simple">' + t.cuentas.map(function (c) {
+        return '<li><span class="crece">' + A.esc(c.nombre) + ' <span class="gris">· ' + (c.tipo === 'caja' ? 'efectivo' : 'banco') + (c.iban ? ' · ' + A.esc(A.formatoIBAN ? A.formatoIBAN(c.iban) : c.iban) : '') + '</span></span>' +
+          '<button class="mini" data-cu="' + c.id + '">Editar</button>' + (usadas[c.id] ? '' : '<button class="mini" data-borc="' + c.id + '">Borrar</button>') + '</li>';
+      }).join('') + '</ul><button class="mini" data-cu="">' + A.icono('mas') + ' Añadir cuenta</button>' +
+      '<p class="gris">Los cobros en efectivo van a la primera cuenta de efectivo; los demás, a la primera cuenta bancaria.</p></section>' +
+      '<section class="tarjeta"><h2>Partidas</h2><div class="dos-columnas"><div>' + lista('ingreso', 'Ingresos') + '</div><div>' + lista('gasto', 'Gastos') + '</div></div></section>' +
+      (t.arqueos.length ? '<section class="tarjeta"><h2>Comprobaciones de saldo</h2><div class="tabla-envoltorio"><table><thead><tr><th>Fecha</th><th>Cuenta</th><th class="num">Libro</th><th class="num">Real</th><th class="num">Diferencia</th></tr></thead><tbody>' +
+        t.arqueos.slice(0, 20).map(function (q) { return '<tr><td>' + A.fechaES(q.fecha) + '</td><td>' + A.esc((A.cuentaPorId(db, q.cuentaId) || {}).nombre || '') + '</td><td class="num">' + euros(q.libroCent) + '</td><td class="num">' + euros(q.realCent) + '</td><td class="num">' + (q.diferenciaCent ? euros(q.diferenciaCent) : A.etiquetaEstado('cuadra', 'ok')) + '</td></tr>'; }).join('') + '</tbody></table></div></section>' : '');
+    A.$('select[name=mesInicio]', cont).addEventListener('change', function (e) { t.mesInicio = +e.target.value; A.log(db, 'El ejercicio empieza en ' + A.MESES[t.mesInicio - 1]); A.guardar(); A.pintar(); });
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      try {
+        if (b.matches('[data-a=inicio]')) return dialogoInicio(db);
+        if (b.hasAttribute('data-cu')) return dialogoCuenta(db, A.cuentaPorId(db, b.getAttribute('data-cu')));
+        if (b.hasAttribute('data-borc')) { A.borrarCuenta(db, b.getAttribute('data-borc')); A.guardar(); return A.pintar(); }
+        if (b.hasAttribute('data-borp')) { A.borrarPartida(db, b.getAttribute('data-borp')); A.guardar(); return A.pintar(); }
+        if (b.hasAttribute('data-ren') || b.hasAttribute('data-nuevap')) {
+          var p = A.partidaPorId(db, b.getAttribute('data-ren')), tipo = b.getAttribute('data-nuevap');
+          A.modal({ titulo: p ? 'Cambiar el nombre de la partida' : 'Nueva partida de ' + (tipo === 'ingreso' ? 'ingresos' : 'gastos'), html: '<form id="f-par" novalidate>' + A.campo('nombre', 'Nombre', p ? p.nombre : '', { requerido: true }) + '</form>',
+            botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) { A.guardarPartida(db, { id: p && p.id, tipo: tipo, nombre: A.$('input[name=nombre]', r).value }); A.guardar(); } }] })
+            .then(function (r) { if (r) A.pintar(); });
+        }
+      } catch (err) { A.toast(err.message, 'mal'); }
+    });
+  }
+  function dialogoCuenta(db, cu) {
+    A.modal({ titulo: cu ? 'Editar cuenta' : 'Nueva cuenta', html: '<form id="f-cu" novalidate>' + A.campo('nombre', 'Nombre', cu ? cu.nombre : '', { requerido: true, ph: 'Cuenta de la caja rural, Caja de la cantina…' }) +
+      A.campo('tipo', 'Tipo', cu ? cu.tipo : 'banco', { opciones: [['banco', 'Cuenta bancaria'], ['caja', 'Efectivo']] }) + A.campo('iban', 'IBAN (opcional)', cu ? cu.iban : '') + '</form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-cu', r)); if (f.iban && !A.validaIBAN(f.iban)) throw new Error('El IBAN no es válido.');
+        A.guardarCuenta(db, { id: cu && cu.id, nombre: f.nombre, tipo: f.tipo, iban: f.iban }); A.guardar();
+      } }] }).then(function (r) { if (r) A.pintar(); });
+  }
+
+  /* ---------- impresos ---------- */
+  function tablaPartidas(filas, total, pres, conPres) {
+    return '<table class="tabla-cuentas"><thead><tr><th>Partida</th>' + (conPres ? '<th class="num">Presupuesto</th>' : '') + '<th class="num">Real</th></tr></thead><tbody>' +
+      filas.filter(function (x) { return x.realCent || x.presupuestoCent; }).map(function (x) { return '<tr><td>' + A.esc(x.p.nombre) + '</td>' + (conPres ? '<td class="num">' + euros(x.presupuestoCent) + '</td>' : '') + '<td class="num">' + euros(x.realCent) + '</td></tr>'; }).join('') +
+      '<tr><td><strong>Total</strong></td>' + (conPres ? '<td class="num"><strong>' + euros(pres) + '</strong></td>' : '') + '<td class="num"><strong>' + euros(total) + '</strong></td></tr></tbody></table>';
+  }
+  function firmas() { return '<p>Aprobado por la asamblea general el ____ de ______________ de ______.</p><div class="firmas"><div>La tesorería<br><br><br>Fdo.: ____________________</div><div>Visto bueno, la presidencia<br><br><br>Fdo.: ____________________</div></div>'; }
+  function imprimirEstado(db, ej) {
+    var r = A.resumenEjercicio(db, ej), t = A.tes(db), ant = A.resumenEjercicio(db, ej - 1), hayAnt = ant.totalIngresos || ant.totalGastos;
+    var html = '<p>Ejercicio ' + A.esc(r.nombre) + ': del ' + A.fechaES(r.desde) + ' al ' + A.fechaES(r.hasta) + '.</p>' +
+      '<h2>1. Ingresos</h2>' + tablaPartidas(r.ingresos, r.totalIngresos, r.presIngresos, r.hayPresupuesto) +
+      '<h2>2. Gastos</h2>' + tablaPartidas(r.gastos, r.totalGastos, r.presGastos, r.hayPresupuesto) +
+      '<h2>3. Resultado</h2><table class="tabla-cuentas"><tbody><tr><td>Ingresos</td><td class="num">' + euros(r.totalIngresos) + '</td>' + (hayAnt ? '<td class="num gris">' + euros(ant.totalIngresos) + ' en ' + A.esc(ant.nombre) + '</td>' : '') + '</tr>' +
+      '<tr><td>Gastos</td><td class="num">' + euros(r.totalGastos) + '</td>' + (hayAnt ? '<td class="num gris">' + euros(ant.totalGastos) + ' en ' + A.esc(ant.nombre) + '</td>' : '') + '</tr>' +
+      '<tr><td><strong>' + (r.resultado >= 0 ? 'Superávit' : 'Déficit') + '</strong></td><td class="num"><strong>' + euros(r.resultado) + '</strong></td>' + (hayAnt ? '<td class="num gris">' + euros(ant.resultado) + ' en ' + A.esc(ant.nombre) + '</td>' : '') + '</tr></tbody></table>' +
+      '<h2>4. Tesorería</h2><table class="tabla-cuentas"><thead><tr><th>Cuenta</th><th class="num">Saldo a ' + A.fechaES(A.diaAnterior(r.desde)) + '</th><th class="num">Saldo a ' + A.fechaES(r.hasta) + '</th></tr></thead><tbody>' +
+      t.cuentas.map(function (c) { return '<tr><td>' + A.esc(c.nombre) + '</td><td class="num">' + euros(r.saldosIniciales[c.id]) + '</td><td class="num">' + euros(r.saldosFinales[c.id]) + '</td></tr>'; }).join('') +
+      '<tr><td><strong>Total</strong></td><td class="num"><strong>' + euros(r.totalInicial) + '</strong></td><td class="num"><strong>' + euros(r.totalFinal) + '</strong></td></tr></tbody></table>' +
+      '<p>Saldo inicial ' + euros(r.totalInicial) + (r.resultado >= 0 ? ' + superávit ' : ' − déficit ') + euros(Math.abs(r.resultado)) + (r.fianzasNetas ? (r.fianzasNetas > 0 ? ' + fianzas recibidas ' : ' − fianzas devueltas ') + euros(Math.abs(r.fianzasNetas)) : '') +
+      ' = saldo final ' + euros(r.totalInicial + r.resultado + r.fianzasNetas) + '.' + (r.totalInicial + r.resultado + r.fianzasNetas !== r.totalFinal ? ' <em>(Los saldos se cuentan desde el ' + A.fechaES(t.inicio ? t.inicio.fecha : r.desde) + '.)</em>' : '') + '</p>' +
+      '<h2>5. Otras informaciones</h2><ul><li>Cuotas pendientes de cobro al cierre: ' + euros(r.pendienteCobroCent) + ' (' + r.pendienteCobroN + ' recibos).</li>' +
+      (r.fianzasEnDeposito ? '<li>Fianzas en depósito, que se devolverán: ' + euros(r.fianzasEnDeposito) + '.</li>' : '') + '</ul>' + firmas();
+    A.imprimir('Estado de cuentas del ejercicio ' + r.nombre, html);
+    A.log(db, 'Impresión del estado de cuentas ' + r.nombre); A.guardar();
+  }
+  function imprimirPresupuesto(db, ej) {
+    var r = A.resumenEjercicio(db, ej);
+    if (!r.hayPresupuesto) return A.toast('Guarda antes el presupuesto.', 'mal');
+    var solo = function (l) { return l.map(function (x) { return { p: x.p, realCent: x.presupuestoCent, presupuestoCent: 0 }; }); };
+    A.imprimir('Presupuesto del ejercicio ' + r.nombre, '<h2>Ingresos previstos</h2>' + tablaPartidas(solo(r.ingresos), r.presIngresos, 0, false) +
+      '<h2>Gastos previstos</h2>' + tablaPartidas(solo(r.gastos), r.presGastos, 0, false) +
+      '<p><strong>' + (r.presIngresos - r.presGastos >= 0 ? 'Superávit' : 'Déficit') + ' previsto: ' + euros(Math.abs(r.presIngresos - r.presGastos)) + '</strong></p>' + firmas());
+  }
+})(A);
+
 /* Alcancía · arranque, estructura de la aplicación y bloqueo automático */
 'use strict';
 (function (A) {
-  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'], ['actividades', 'Actividades', 'calendario'], ['enseres', null, 'percha'], ['donativos', 'Donativos', 'corazon'],
+  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'], ['actividades', 'Actividades', 'calendario'], ['enseres', null, 'percha'], ['donativos', 'Donativos', 'corazon'], ['tesoreria', 'Tesorería', 'cartera'],
     ['comunicaciones', 'Comunicaciones', 'correo'], ['listados', 'Listados', 'imprimir'], ['rgpd', 'Protección de datos', 'escudo'],
     ['datos', 'Datos y copias', 'disco'], ['configuracion', 'Configuración', 'ajustes'], ['ayuda', 'Ayuda', 'ayuda']];
 
@@ -5104,6 +5848,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.alGuardar = A.pintarCabecera;
 
   A.pintar = async function () {
+    if (A.olvidarMovimientos) A.olvidarMovimientos();
     var raiz = A.$('#app');
     A.$$('.fondo-modal').forEach(function (m) { m.remove(); });
     if (!A.S.db) {
