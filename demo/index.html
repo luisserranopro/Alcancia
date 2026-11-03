@@ -265,7 +265,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.5.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.5.1', formato: 'alcancia-v2', repositorio: 'luisserranopro/Alcancia', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -710,6 +710,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.dejarFichero = async function () { A.S.handle = null; A.S.estadoFichero = 'ninguno'; await A.idbDel('fichero'); };
 
   A.descargarCopia = async function () {
+    if (A.comprobarDatos && A.comprobarDatos(A.S.db).problemas.some(function (p) { return p.reparable; })) A.repararDatos(A.S.db);  // antes de copiar, se arreglan los enlaces rotos
     var sobre = await A.sobreActual();
     A.S.db.ultimaCopia = new Date().toISOString();
     A.log(A.S.db, 'Copia de seguridad descargada');
@@ -1684,6 +1685,75 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       }).concat([tipos[m.tipoCuotaId] || '']);
     });
     return A.aCSV(cab, filas);
+  };
+})(A);
+
+/* Alcancía · comprobación de la integridad de los datos (sin mirar su contenido personal)
+   Busca referencias rotas entre listas (cuotas de personas que no existen, tarjetas de salidas borradas…),
+   identificadores o números repetidos y estados incoherentes. Algunas cosas se pueden reparar sin riesgo. */
+'use strict';
+(function (A) {
+  A.comprobarDatos = function (db) {
+    var p = [], ids = new Set(), rep = 0;
+    function id(lista) { (lista || []).forEach(function (x) { if (!x || !x.id) return; if (ids.has(x.id)) rep++; ids.add(x.id); }); }
+    ['miembros', 'cargos', 'remesas', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'tiposCuota'].forEach(function (k) { id(db[k]); });
+    if (rep) p.push({ tipo: 'idsRepetidos', n: rep, texto: rep + ' registros comparten identificador', reparable: false });
+    var miembros = new Set(db.miembros.map(function (m) { return m.id; }));
+    var existe = function (mid) { return !mid || mid === 'suprimido' || miembros.has(mid); };
+    var cuenta = function (tipo, n, texto, reparable) { if (n) p.push({ tipo: tipo, n: n, texto: n + ' ' + texto, reparable: !!reparable }); };
+    var nums = {}, numRep = 0;
+    db.miembros.forEach(function (m) { if (m.numero == null || m.numero === '') return; var k = String(m.numero); if (nums[k]) numRep++; nums[k] = 1; });
+    cuenta('numerosRepetidos', numRep, 'números de miembro repetidos (revisa la lista de miembros)');
+    cuenta('miembrosSinNombre', db.miembros.filter(function (m) { return !String(m.nombre || '').trim(); }).length, 'miembros sin nombre');
+    cuenta('cuotasHuerfanas', db.cargos.filter(function (c) { return !existe(c.miembroId); }).length, 'cuotas de personas que ya no existen', true);
+    var cargos = new Set(db.cargos.map(function (c) { return c.id; }));
+    cuenta('remesasRotas', db.remesas.reduce(function (n, r) { return n + (r.cargoIds || []).filter(function (x) { return !cargos.has(x); }).length; }, 0), 'recibos de remesas que ya no existen');
+    var salidas = {}; db.salidas.forEach(function (s) { salidas[s.id] = s; });
+    cuenta('tarjetasSinSalida', db.tarjetas.filter(function (t) { return !salidas[t.salidaId]; }).length, 'tarjetas de sitio de salidas que ya no existen', true);
+    cuenta('tarjetasHuerfanas', db.tarjetas.filter(function (t) { return !existe(t.miembroId); }).length, 'tarjetas de sitio de personas que ya no existen', true);
+    var cortejo = 0;
+    db.salidas.forEach(function (s) {
+      if (!s.cortejo) return;
+      var tr = new Set(s.cortejo.tramos.map(function (t) { return t.id; })), tj = new Set(db.tarjetas.filter(function (t) { return t.salidaId === s.id; }).map(function (t) { return t.id; }));
+      Object.keys(s.cortejo.asignaciones || {}).forEach(function (k) { if (!tj.has(k) || !tr.has(s.cortejo.asignaciones[k].tramoId)) cortejo++; });
+    });
+    cuenta('cortejoRoto', cortejo, 'puestos del cortejo que apuntan a tarjetas o tramos que ya no existen', true);
+    var actividades = new Set(db.actividades.map(function (a) { return a.id; }));
+    cuenta('inscripcionesHuerfanas', db.inscripciones.filter(function (x) { return !actividades.has(x.actividadId); }).length, 'inscripciones de actividades que ya no existen', true);
+    cuenta('talonariosHuerfanos', db.talonarios.filter(function (t) { return !actividades.has(t.actividadId); }).length, 'talonarios de actividades que ya no existen', true);
+    var enseres = {}; db.enseres.forEach(function (e) { enseres[e.id] = e; });
+    cuenta('prestamosSinPieza', db.prestamos.filter(function (x) { return !enseres[x.enserId]; }).length, 'préstamos de piezas que ya no existen');
+    var activos = {}; db.prestamos.forEach(function (x) { if (!x.fechaDevolucion) activos[x.enserId] = (activos[x.enserId] || 0) + 1; });
+    cuenta('enseresIncoherentes', db.enseres.filter(function (e) { return (e.estado === 'prestado') !== !!activos[e.id]; }).length, 'piezas con un estado que no coincide con sus préstamos', true);
+    cuenta('prestamosDobles', Object.keys(activos).filter(function (k) { return activos[k] > 1; }).length, 'piezas prestadas a la vez a más de una persona');
+    return { problemas: p, total: p.reduce(function (s, x) { return s + x.n; }, 0),
+      recuento: { miembros: db.miembros.length, cuotas: db.cargos.length, remesas: db.remesas.length, salidas: db.salidas.length, tarjetas: db.tarjetas.length,
+        actividades: db.actividades.length, inscripciones: db.inscripciones.length, talonarios: db.talonarios.length, enseres: db.enseres.length, prestamos: db.prestamos.length } };
+  };
+
+  /* Reparaciones seguras: no borran importes ni cobros; los dejan sin persona («suprimido») o quitan referencias imposibles */
+  A.repararDatos = function (db) {
+    var n = 0, miembros = new Set(db.miembros.map(function (m) { return m.id; }));
+    var huerfano = function (mid) { return mid && mid !== 'suprimido' && !miembros.has(mid); };
+    db.cargos.forEach(function (c) { if (huerfano(c.miembroId)) { c.miembroId = 'suprimido'; n++; } });
+    db.tarjetas.forEach(function (t) { if (huerfano(t.miembroId)) { t.miembroId = 'suprimido'; n++; } });
+    var salidas = new Set(db.salidas.map(function (s) { return s.id; })), antes = db.tarjetas.length;
+    db.tarjetas = db.tarjetas.filter(function (t) { return salidas.has(t.salidaId); }); n += antes - db.tarjetas.length;
+    db.salidas.forEach(function (s) {
+      if (!s.cortejo) return;
+      var tr = new Set(s.cortejo.tramos.map(function (t) { return t.id; })), tj = new Set(db.tarjetas.filter(function (t) { return t.salidaId === s.id; }).map(function (t) { return t.id; }));
+      Object.keys(s.cortejo.asignaciones || {}).forEach(function (k) { if (!tj.has(k) || !tr.has(s.cortejo.asignaciones[k].tramoId)) { delete s.cortejo.asignaciones[k]; n++; } });
+    });
+    var actividades = new Set(db.actividades.map(function (a) { return a.id; }));
+    antes = db.inscripciones.length; db.inscripciones = db.inscripciones.filter(function (x) { return actividades.has(x.actividadId); }); n += antes - db.inscripciones.length;
+    antes = db.talonarios.length; db.talonarios = db.talonarios.filter(function (t) { return actividades.has(t.actividadId); }); n += antes - db.talonarios.length;
+    var activos = {}; db.prestamos.forEach(function (x) { if (!x.fechaDevolucion) activos[x.enserId] = 1; });
+    db.enseres.forEach(function (e) {
+      var debe = activos[e.id] ? 'prestado' : (e.estado === 'prestado' ? 'disponible' : e.estado);
+      if (e.estado !== debe) { e.estado = debe; n++; }
+    });
+    if (n) A.log(db, 'Comprobación de datos: ' + n + ' correcciones automáticas');
+    return n;
   };
 })(A);
 
@@ -3784,6 +3854,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         (A.S.estadoFichero === 'pendiente-permiso' ? '<button class="principal" data-a="reactivar">Reactivar</button>' : '') +
         '<button data-a="elegir">' + (A.S.handle ? 'Cambiar de fichero' : 'Elegir fichero') + '</button>' + (A.S.handle ? '<button data-a="dejar">Desactivar</button>' : '') + '</div>'
         : '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>Tu navegador no permite esta función. Usa Chrome o Edge, o descarga copias con frecuencia.</p></div></div>') + '</section>' +
+      '<section class="tarjeta" id="comprobar"><h2>Comprobar los datos</h2><p>Revisa que todo está bien enlazado: cuotas, tarjetas, inscripciones o préstamos que apunten a algo borrado, números repetidos o piezas con un estado incoherente. Se hace también, sin avisar, antes de cada copia.</p>' +
+      '<div id="res-comprobar"></div><button data-a="comprobar">Comprobar ahora</button></section>' +
       '<section class="tarjeta"><h2>Exportar todo a Excel</h2><p>Un libro de Excel con una hoja por apartado (' + A.vocab(db).miembros + ', cuotas, remesas, tarjetas, actividades, préstamos…), para consultarlo o llevarlo a otro programa. Contiene datos personales sin cifrar: guárdalo con cuidado.</p>' +
       '<button data-a="excel">' + A.icono('bajar') + ' Descargar el libro de Excel</button></section>' +
       '<section class="tarjeta"><h2>Traspaso de junta o cambio de ordenador</h2><ol><li>Descarga una copia cifrada.</li><li>Entrega el fichero y, <strong>por otra vía</strong>, la contraseña a la nueva persona responsable.</li>' +
@@ -3804,6 +3876,13 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var b = e.target.closest('[data-a]'); if (!b) return;
       var a = b.getAttribute('data-a');
       try {
+        if (a === 'comprobar') {
+          var r = A.comprobarDatos(db), caja = A.$('#res-comprobar', c), rep = r.problemas.some(function (p) { return p.reparable; });
+          caja.innerHTML = !r.problemas.length ? '<div class="aviso bien">' + A.icono('ok', 20) + '<div><p>Todo está bien enlazado (' + r.recuento.miembros + ' ' + A.vocab(db).miembros + ', ' + r.recuento.cuotas + ' cuotas).</p></div></div>'
+            : '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><ul>' + r.problemas.map(function (p) { return '<li>' + A.esc(p.texto) + (p.reparable ? '' : ' <span class="gris">(revísalo a mano)</span>') + '</li>'; }).join('') + '</ul>' +
+              (rep ? '<p><button class="principal" data-a="reparar">Reparar lo que se puede arreglar solo</button></p><p class="gris">No se borra ningún cobro: las cuotas de personas que ya no existen se conservan como «persona suprimida».</p>' : '') + '</div></div>';
+        }
+        if (a === 'reparar') { var n = A.repararDatos(db); await A.guardarAhora(); A.toast(n + ' correcciones hechas.'); A.$('[data-a=comprobar]', c).click(); }
         if (a === 'copia') { await A.descargarCopia(); A.toast('Copia descargada.'); A.pintar(); }
         if (a === 'excel') { A.descargar(A.nombreFichero(db.entidad.nombre) + '-' + A.hoyISO() + '.xlsx', new Blob([A.crearXLSX(A.libroCompleto(db))], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); A.log(db, 'Exportación completa a Excel'); A.guardar(); }
         if (a === 'elegir') { await A.elegirFichero(); A.toast('Guardado automático activado.'); A.pintar(); }
@@ -3930,7 +4009,17 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         '<li>En «Resumen y listados», imprime el listado de cada tipo de tarjetas pagadas y las propias tarjetas (seis por hoja).</li><li>Al terminar, cierra la salida. Queda en el historial de cada ' + v.miembro + '.</li></ol>') : '') +
       bloque('Atajos', '<p><span class="mono">Alt+N</span> nuevo ' + v.miembro + ' · <span class="mono">Alt+B</span> buscar · <span class="mono">Alt+L</span> bloquear.</p>') +
       bloque('Remesas: errores frecuentes', '<ul><li><strong>El banco rechaza el fichero:</strong> comprueba el identificador de acreedor y que tenéis contratado el servicio de adeudos SEPA CORE.</li><li><strong>Recibos devueltos:</strong> regístralos en Remesas › Devoluciones; volverán a quedar pendientes.</li><li><strong>Mandatos:</strong> cada ' + v.miembro + ' que paga por banco debe haber firmado la orden de domiciliación. Imprímela desde su ficha.</li></ul>') +
+      bloque('Soporte técnico', '<p>Si algo falla, pulsa «Copiar informe para soporte» y pégalo en un correo a <span class="mono">info@' + A.APP.dominio + '</span>, contando qué estabas haciendo. El informe solo lleva la versión, el navegador, la pantalla, cuántos registros hay y los últimos errores: <strong>ningún nombre, DNI, cuenta, correo ni teléfono</strong>. Puedes leerlo antes de enviarlo.</p>' +
+        '<p>Nunca envíes la copia de seguridad, la contraseña ni la llave de recuperación: para resolver un fallo no hacen falta.</p>' +
+        '<div class="barra"><button class="principal" id="b-copiar-informe">Copiar informe para soporte</button><button id="b-ver-informe">Ver el informe</button><button id="b-bajar-informe">Descargar como texto</button><button id="b-actualizar">Buscar actualizaciones</button></div>' +
+        '<p class="gris">Versión ' + A.esc(A.APP.version) + '. «Buscar actualizaciones» solo consulta el número de la última versión en ' + A.APP.dominio + ' (o en GitHub); no envía nada de la entidad.</p>') +
       bloque('Más información', '<p>Guía completa, preguntas frecuentes y plantillas de protección de datos en la web del proyecto.</p>');
+    A.$('#b-copiar-informe', c).addEventListener('click', A.copiarInforme);
+    A.$('#b-bajar-informe', c).addEventListener('click', A.descargarInforme);
+    A.$('#b-actualizar', c).addEventListener('click', A.buscarActualizaciones);
+    A.$('#b-ver-informe', c).addEventListener('click', async function () {
+      A.modal({ titulo: 'Informe para soporte', ancho: true, html: '<p>Esto es exactamente lo que se copia. No incluye datos de las personas.</p><textarea readonly id="txt-informe" class="mono" style="min-height:300px">' + A.esc(await A.informeSoporte()) + '</textarea>' });
+    });
   };
 })(A);
 
@@ -5073,6 +5162,154 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     }
     A.pintar();
   });
+})(A);
+
+/* Alcancía · soporte sin ver los datos: errores comprensibles, informe técnico sin datos personales
+   y búsqueda de actualizaciones solo cuando la entidad la pide. */
+'use strict';
+(function (A) {
+  A.S.errores = [];
+
+  /* Quita del texto todo lo que podría ser un dato personal: correos, IBAN, DNI/NIE/CIF, teléfonos y cifras largas,
+     y lo que va entre comillas (nombres de personas, salidas o actividades) */
+  A.limpiaTexto = function (s) {
+    return String(s == null ? '' : s)
+      .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '[correo]')
+      .replace(/\b[A-Z]{2}\d{2}(?:\s?[A-Z0-9]{4}){3,7}(?:\s?[A-Z0-9]{1,4})?\b/gi, '[cuenta]')
+      .replace(/\b[XYZ]?\d{7,8}[A-Z]\b/gi, '[documento]').replace(/\b[ABCDEFGHJNPQRSUVW]\d{7}[0-9A-J]\b/g, '[documento]')
+      .replace(/(\+?\d[\d\s]{7,}\d)/g, '[número]')
+      .replace(/«[^»]*»/g, '«…»').replace(/"[^"]{1,80}"/g, '"…"')
+      .slice(0, 600);
+  };
+
+  A.registrarError = function (err, contexto) {
+    var e = err && err.reason !== undefined ? err.reason : err;
+    var msg = e && e.message ? e.message : String(e);
+    var pila = e && e.stack ? String(e.stack).split('\n').slice(0, 6).map(function (l) { return l.replace(/\(?(?:https?|file|blob):\/\/[^)\s]*\/([^/)\s]+)(:\d+:\d+)\)?/g, '$1$2').trim(); }).join(' | ') : '';
+    var r = { fecha: new Date().toISOString(), contexto: contexto || '', ruta: typeof location !== 'undefined' ? (location.hash || '').split('?')[0] : '', mensaje: A.limpiaTexto(msg), pila: A.limpiaTexto(pila) };
+    A.S.errores.push(r); if (A.S.errores.length > 20) A.S.errores.shift();
+    return r;
+  };
+
+  /* Aviso al usuario: comprensible y, como mucho, uno cada pocos segundos */
+  var ultimoAviso = 0;
+  A.avisarError = function () {
+    if (Date.now() - ultimoAviso < 4000) return;
+    ultimoAviso = Date.now();
+    if (A.$('.fondo-modal')) return A.toast('Algo no ha funcionado. Si se repite, copia el informe para soporte en Ayuda.', 'mal');
+    A.modal({ titulo: 'Algo no ha funcionado', html: '<p>' + A.APP.nombre + ' ha encontrado un error. Tus datos guardados no se han perdido.</p>' +
+      '<p>Si vuelve a pasar, copia el <strong>informe para soporte</strong> y envíalo a <span class="mono">info@' + A.APP.dominio + '</span> contando qué estabas haciendo. El informe no incluye nombres, DNI, cuentas ni ningún otro dato de las personas.</p>',
+      botones: [{ texto: 'Copiar informe para soporte', valor: 'copiar', izq: true }, { texto: 'Seguir', valor: true, clase: 'principal' }] })
+      .then(function (r) { if (r === 'copiar') A.copiarInforme(); });
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('error', function (e) { if (!e.error && !e.message) return; A.registrarError(e.error || e.message, 'error'); A.avisarError(); });
+    window.addEventListener('unhandledrejection', function (e) {
+      var m = e.reason && e.reason.message || '';
+      if (e.reason && e.reason.name === 'AbortError') return;   // el usuario canceló un diálogo del navegador
+      A.registrarError(e, 'promesa'); if (!/Failed to fetch/.test(m)) A.avisarError();
+    });
+  }
+
+  /* Si una pantalla falla al dibujarse, se muestra un aviso en su lugar en vez de dejarla en blanco */
+  var pintarOriginal = A.pintar;
+  A.pintar = async function () {
+    try { return await pintarOriginal.apply(this, arguments); }
+    catch (err) {
+      A.registrarError(err, 'pantalla');
+      var c = A.$('#contenido-principal');
+      if (c) {
+        c.innerHTML = '<div class="titulo-pagina"><h1>No se ha podido mostrar esta pantalla</h1></div><div class="aviso mal">' + A.icono('aviso', 20) + '<div><p>Ha habido un error al preparar esta pantalla. Tus datos no se han perdido.</p>' +
+          '<p>Prueba a volver al panel. Si se repite, copia el informe y envíalo a <span class="mono">info@' + A.APP.dominio + '</span>.</p></div></div>' +
+          '<div class="fila-acciones" style="justify-content:flex-start"><button class="principal" data-ir="panel">Volver al panel</button><button id="b-informe-error">Copiar informe para soporte</button></div>';
+        A.$('#b-informe-error', c).addEventListener('click', A.copiarInforme);
+        c.addEventListener('click', function (e) { var b = e.target.closest('[data-ir]'); if (b) A.ir(b.getAttribute('data-ir')); });
+      } else A.avisarError();
+    }
+  };
+
+  /* ---------- informe técnico ---------- */
+  function modo() {
+    if (window.ALCANCIA_DEMO) return 'demostración';
+    if (location.protocol === 'file:') return 'fichero descargado';
+    return /\/app\/?/.test(location.pathname) ? 'aplicación web instalable' : 'página web';
+  }
+  A.informeSoporte = async function () {
+    var db = A.S.db, l = [];
+    l.push('INFORME PARA SOPORTE · ' + A.APP.nombre + ' ' + A.APP.version);
+    l.push('No contiene nombres, DNI, cuentas, correos ni teléfonos de nadie.');
+    l.push('');
+    l.push('Fecha: ' + new Date().toISOString());
+    l.push('Modo: ' + modo() + ' · Formato de datos: ' + A.APP.formato + ' / ' + A.VERSION_DATOS);
+    l.push('Navegador: ' + navigator.userAgent);
+    l.push('Idioma: ' + navigator.language + ' · Pantalla: ' + screen.width + '×' + screen.height + ' · Ventana: ' + innerWidth + '×' + innerHeight + ' · Táctil: ' + (navigator.maxTouchPoints > 0 ? 'sí' : 'no'));
+    l.push('Cifrado: ' + (A.puedeCifrar() ? 'sí' : 'NO') + ' · Compresión: ' + (typeof CompressionStream === 'function' ? 'sí' : 'no') + ' · Fichero en disco: ' + (A.puedeUsarFichero() ? 'sí' : 'no') + ' · Conexión: ' + (navigator.onLine ? 'sí' : 'no'));
+    try { var est = await navigator.storage.estimate(); l.push('Almacenamiento: ' + Math.round(est.usage / 1048576) + ' MB usados de ' + Math.round(est.quota / 1048576) + ' MB'); } catch (e) { l.push('Almacenamiento: no disponible'); }
+    l.push('Pantalla actual: ' + ((location.hash || '#/').split('?')[0]));
+    if (db) {
+      l.push('');
+      l.push('Entidad: perfil ' + db.entidad.perfil + ' · escudo ' + (db.entidad.logo ? 'sí' : 'no') + ' · ejemplo ' + (db.ejemplo ? 'sí' : 'no'));
+      l.push('Opciones: activos/asociados ' + (db.ajustes.condicionCofrade ? 'sí' : 'no') + ' · donativos ' + (A.usaDonativos(db) ? 'sí' : 'no') + ' · enseres ' + (A.usaEnseres(db) ? 'sí' : 'no') +
+        ' · llave de recuperación ' + (A.llaveCreada() !== null ? 'sí' : 'no') + ' · guardado en fichero ' + A.S.estadoFichero + ' · última copia ' + (db.ultimaCopia ? db.ultimaCopia.slice(0, 10) : 'nunca'));
+      var c = A.comprobarDatos(db);
+      l.push('Cantidades: ' + Object.keys(c.recuento).map(function (k) { return k + ' ' + c.recuento[k]; }).join(' · '));
+      l.push('Comprobación de datos: ' + (c.problemas.length ? c.problemas.map(function (p) { return p.tipo + ' ' + p.n; }).join(' · ') : 'sin problemas'));
+    } else l.push('Entidad: no abierta');
+    l.push('');
+    l.push('Errores recientes: ' + (A.S.errores.length ? '' : 'ninguno'));
+    A.S.errores.slice(-10).forEach(function (e) { l.push('· ' + e.fecha + ' [' + e.contexto + '] ' + e.ruta + ' · ' + e.mensaje + (e.pila ? ' · ' + e.pila : '')); });
+    return l.join('\n');
+  };
+  A.copiarInforme = async function () {
+    var t = await A.informeSoporte();
+    try { await navigator.clipboard.writeText(t); A.toast('Informe copiado. Pégalo en un correo a info@' + A.APP.dominio + ' y cuenta qué estabas haciendo.'); }
+    catch (e) { A.modal({ titulo: 'Informe para soporte', ancho: true, html: '<p>Copia este texto y envíalo a <span class="mono">info@' + A.APP.dominio + '</span>:</p><textarea readonly style="min-height:260px" class="mono">' + A.esc(t) + '</textarea>' }); }
+  };
+  A.descargarInforme = async function () {
+    A.descargar('informe-soporte-' + A.APP.version + '-' + A.hoyISO() + '.txt', await A.informeSoporte(), 'text/plain;charset=utf-8');
+  };
+
+  /* ---------- actualizaciones (solo a petición; se consulta el número de versión, sin enviar nada) ---------- */
+  A.compararVersiones = function (a, b) {
+    var x = String(a).replace(/^v/, '').split('.').map(Number), y = String(b).replace(/^v/, '').split('.').map(Number);
+    for (var i = 0; i < 3; i++) { var d = (x[i] || 0) - (y[i] || 0); if (d) return d > 0 ? 1 : -1; }
+    return 0;
+  };
+  A.consultarUltimaVersion = async function () {
+    var fuentes = ['https://' + A.APP.dominio + '/version.json', 'https://api.github.com/repos/' + A.APP.repositorio + '/releases/latest'];
+    for (var i = 0; i < fuentes.length; i++) {
+      try {
+        var r = await fetch(fuentes[i], { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer' });
+        if (!r.ok) continue;
+        var j = await r.json();
+        if (j.version) return { version: j.version, fecha: j.fecha || '', novedades: j.novedades || [], descarga: j.descarga || '' };
+        if (j.tag_name) return { version: j.tag_name.replace(/^v/, ''), fecha: (j.published_at || '').slice(0, 10), novedades: String(j.body || '').split('\n').filter(Boolean).slice(0, 8), descarga: 'https://github.com/' + A.APP.repositorio + '/releases/latest/download/alcancia.html' };
+      } catch (e) { /* se prueba la siguiente */ }
+    }
+    throw new Error('No se ha podido consultar. Comprueba la conexión a internet.');
+  };
+  A.buscarActualizaciones = async function () {
+    A.toast('Consultando la última versión…');
+    var u;
+    try { u = await A.consultarUltimaVersion(); } catch (e) { return A.toast(e.message, 'mal'); }
+    var cmp = A.compararVersiones(u.version, A.APP.version);
+    if (cmp <= 0) return A.modal({ titulo: 'Tienes la última versión', html: '<p>Estás usando ' + A.APP.nombre + ' ' + A.esc(A.APP.version) + ', que es la más reciente.</p>' });
+    var web = modo() === 'aplicación web instalable' || modo() === 'página web';
+    A.modal({ titulo: 'Hay una versión nueva: ' + u.version, html: '<p>Tienes la ' + A.esc(A.APP.version) + '.' + (u.fecha ? ' La ' + A.esc(u.version) + ' se publicó el ' + A.fechaES(u.fecha) + '.' : '') + '</p>' +
+      (u.novedades.length ? '<ul>' + u.novedades.map(function (n) { return '<li>' + A.esc(n) + '</li>'; }).join('') + '</ul>' : '') +
+      '<p>' + (web ? 'Para actualizar, pulsa «Actualizar ahora»: se recarga la página con la versión nueva y tus datos siguen igual.'
+        : 'Descarga el fichero nuevo y ábrelo en lugar del anterior. Tus datos están en el navegador y en vuestras copias: no se pierden. Guarda el fichero antiguo por si acaso.') + '</p>',
+      botones: [{ texto: 'Más tarde', valor: false }, web ? { texto: 'Actualizar ahora', valor: 'recargar', clase: 'principal' } : { texto: 'Descargar la versión nueva', valor: 'descargar', clase: 'principal' }] })
+      .then(async function (r) {
+        if (r === 'descargar') { var a = document.createElement('a'); a.href = u.descarga; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+        if (r === 'recargar') {
+          await A.guardarAhora();
+          try { var reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); } catch (e) { /* sin modo sin conexión */ }
+          location.reload();
+        }
+      });
+  };
 })(A);
 
 /* Alcancía · modo demostración (web pública): entidades de ejemplo con datos inventados.

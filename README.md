@@ -74,4 +74,4 @@ Aquí se publica la web del proyecto con GitHub Pages ([alcancia.work](https://a
 
 Alcancía lo desarrolla y mantiene **Luis Serrano Donaire**. Dudas, sugerencias o ganas de probarlo en vuestra entidad: **info@alcancia.work**.
 
-No enviéis nunca datos de vuestros socios por correo: si algo falla, describidlo con datos inventados.
+No enviéis nunca datos de vuestros socios por correo. Si algo falla, en *Ayuda › Soporte técnico* está el botón «Copiar informe para soporte»: recoge la versión, el navegador y los últimos errores, sin ningún nombre, DNI, cuenta, correo ni teléfono.
