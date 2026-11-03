@@ -268,6 +268,15 @@ table.libro td { vertical-align: top; }
 @media print { .tabla-cuentas { width: 100%; border-collapse: collapse; margin: 2mm 0 5mm; } #imprimir h2 { font-size: 12.5pt; margin: 6mm 0 2mm; break-after: avoid; } .tabla-cuentas { break-inside: avoid; } }
 #primeros-pasos progress { width: 100%; height: 8px; accent-color: var(--marca-barro); margin: 10px 0 4px; }
 .lista-pasos li.hecho { color: var(--texto-2); } .lista-pasos li.hecho svg { color: var(--ok); }
+
+/* junta y cargos */
+.cronologia { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--borde); }
+.cronologia li { position: relative; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid var(--borde); }
+.cronologia li::before { content: ""; position: absolute; left: -25px; top: 16px; width: 10px; height: 10px; border-radius: 50%; background: var(--superficie); border: 2px solid var(--texto-2); }
+.cronologia li.vigente::before { background: var(--marca-barro); border-color: var(--marca-barro); }
+.cronologia .cr-fechas { min-width: 13em; color: var(--texto-2); font-variant-numeric: tabular-nums; }
+.cronologia .cr-cuerpo { flex: 1; min-width: 0; }
+.gris.fuera { font-weight: 400; }
 </style>
 </head>
 <body>
@@ -285,7 +294,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.6.0', formato: 'alcancia-v2', repositorio: 'luisserranopro/Alcancia', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.6.1', formato: 'alcancia-v2', repositorio: 'luisserranopro/Alcancia', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -1206,17 +1215,17 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       ajustes: Object.assign({}, A.AJUSTES_DEFECTO),
       tiposCuota: [], miembros: [], cargos: [], remesas: [], salidas: [], tarjetas: [], registro: [], ultimaCopia: null,
       enseres: [], prestamos: [], actividades: [], inscripciones: [], talonarios: [], fiscal: Object.assign({}, A.FISCAL_DEFECTO),
-      apuntes: [], tesoreria: A.tesoreriaInicial((entidad && entidad.perfil) || 'asociacion'),
+      apuntes: [], tesoreria: A.tesoreriaInicial((entidad && entidad.perfil) || 'asociacion'), nombramientos: [],
     };
   };
 
   /* condicionCofrade: distingue cofrades activos y asociados (Archidiócesis de Granada). votoEdadMin y votoAntiguedadMin según estatutos */
   A.AJUSTES_DEFECTO = { bloqueoMin: 15, recordatorioCopiaDias: 7, conservarBajasAnios: 5, condicionCofrade: false, votoEdadMin: 18, votoAntiguedadMin: 1, usarEnseres: false };
-  A.VERSION_DATOS = 4;
+  A.VERSION_DATOS = 5;
 
   A.migrar = function (db) {
     if (!db.version) db.version = 1;
-    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'apuntes'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
+    ['tiposCuota', 'miembros', 'cargos', 'remesas', 'registro', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'apuntes', 'nombramientos'].forEach(function (k) { if (!Array.isArray(db[k])) db[k] = []; });
     if (!db.tesoreria) db.tesoreria = A.tesoreriaInicial((db.entidad && db.entidad.perfil) || 'asociacion');
     db.fiscal = Object.assign({}, A.FISCAL_DEFECTO, db.fiscal || {});
     db.ajustes = Object.assign({}, A.AJUSTES_DEFECTO, db.ajustes || {});
@@ -1469,7 +1478,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       }) : [],
       actividades: A.actividadesDe ? A.actividadesDe(db, id).map(function (x) {
         return { actividad: x.actividad, fecha: x.fecha, detalle: x.detalle, importe: A.decimalPunto(x.importeCent), pagado: A.decimalPunto(x.pagadoCent), estado: x.estado };
-      }) : [] };
+      }) : [],
+      cargos: A.cargosDePersona ? A.cargosDePersona(db, id).map(function (n) { return { cargo: n.cargo, organo: n.organo, desde: n.desde, hasta: n.hasta }; }) : [] };
   };
 
   /* Suprime los datos personales y conserva los importes (anonimizados) por obligaciones contables */
@@ -1482,6 +1492,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     (db.prestamos || []).forEach(function (p) { if (p.miembroId === id) { p.miembroId = 'suprimido'; p.observaciones = ''; } });
     (db.inscripciones || []).forEach(function (x) { if (x.miembroId === id) { x.miembroId = 'suprimido'; x.detalle = ''; x.observaciones = ''; } });
     (db.talonarios || []).forEach(function (t) { if (t.miembroId === id) t.miembroId = 'suprimido'; });
+    (db.nombramientos || []).forEach(function (n) { if (n.miembroId === id) { n.miembroId = 'suprimido'; n.observaciones = ''; } });
     if (db.fiscal && db.fiscal.recurrentes) Object.keys(db.fiscal.recurrentes).forEach(function (a) { delete db.fiscal.recurrentes[a][id]; });
     A.log(db, 'Supresión de datos del nº ' + m.numero + ' (derecho de supresión o fin del plazo de conservación)');
     return true;
@@ -1693,6 +1704,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       return [a.nombre || '', t.numero].concat(nom(t.miembroId), [t.participaciones, t.vendidas, t.devueltas, e(t.liquidadoCent), t.estado === 'liquidado' ? 'Liquidado' : 'Por liquidar']); })) });
     if (db.enseres.length) hojas.push({ nombre: 'Inventario', filas: [['Código', 'Pieza', 'Tipo', 'Talla', 'Ubicación', 'Estado', 'Fianza (€)']].concat(db.enseres.map(function (x) {
       return [x.codigo, x.nombre, x.tipo, x.talla, x.ubicacion, A.ESTADOS_ENSER[x.estado], e(x.fianzaCent || 0)]; })) });
+    if (A.hojaCargos && (db.nombramientos || []).length) hojas.push(A.hojaCargos(db));
     if (A.hojasTesoreria && (db.apuntes.length || db.remesas.length || db.tarjetas.length || db.inscripciones.length)) hojas = hojas.concat(A.hojasTesoreria(db, A.ejercicioActual(db)).slice(0, 2));
     if (db.prestamos.length) hojas.push({ nombre: 'Préstamos', filas: [['Pieza', 'Nº', v.Miembro, 'Prestada', 'Devolver antes de', 'Devuelta', 'Estado al devolver', 'Fianza (€)', 'Fianza']].concat(db.prestamos.map(function (p) {
       var x = A.enserPorId(db, p.enserId) || {};
@@ -1723,7 +1735,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   A.comprobarDatos = function (db) {
     var p = [], ids = new Set(), rep = 0;
     function id(lista) { (lista || []).forEach(function (x) { if (!x || !x.id) return; if (ids.has(x.id)) rep++; ids.add(x.id); }); }
-    ['miembros', 'cargos', 'remesas', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'tiposCuota', 'apuntes'].forEach(function (k) { id(db[k]); });
+    ['miembros', 'cargos', 'remesas', 'salidas', 'tarjetas', 'enseres', 'prestamos', 'actividades', 'inscripciones', 'talonarios', 'tiposCuota', 'apuntes', 'nombramientos'].forEach(function (k) { id(db[k]); });
     if (rep) p.push({ tipo: 'idsRepetidos', n: rep, texto: rep + ' registros comparten identificador', reparable: false });
     var miembros = new Set(db.miembros.map(function (m) { return m.id; }));
     var existe = function (mid) { return !mid || mid === 'suprimido' || miembros.has(mid); };
@@ -1753,6 +1765,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var activos = {}; db.prestamos.forEach(function (x) { if (!x.fechaDevolucion) activos[x.enserId] = (activos[x.enserId] || 0) + 1; });
     cuenta('enseresIncoherentes', db.enseres.filter(function (e) { return (e.estado === 'prestado') !== !!activos[e.id]; }).length, 'piezas con un estado que no coincide con sus préstamos', true);
     cuenta('prestamosDobles', Object.keys(activos).filter(function (k) { return activos[k] > 1; }).length, 'piezas prestadas a la vez a más de una persona');
+    cuenta('cargosHuerfanos', (db.nombramientos || []).filter(function (n) { return n.miembroId && !existe(n.miembroId); }).length, 'cargos de la junta de personas que ya no existen', true);
+    cuenta('cargosFechas', (db.nombramientos || []).filter(function (n) { return n.hasta && n.hasta < n.desde; }).length, 'cargos con la fecha de cese anterior a la de toma de posesión');
     if (db.tesoreria) {
       var cu = new Set(db.tesoreria.cuentas.map(function (x) { return x.id; })), pa = new Set(db.tesoreria.partidas.map(function (x) { return x.id; }));
       cuenta('apuntesSinCuenta', (db.apuntes || []).filter(function (a) { return !cu.has(a.cuentaId) || (a.tipo === 'traspaso' && !cu.has(a.cuentaDestinoId)); }).length, 'apuntes del libro de caja con una cuenta que ya no existe');
@@ -1760,7 +1774,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     }
     return { problemas: p, total: p.reduce(function (s, x) { return s + x.n; }, 0),
       recuento: { miembros: db.miembros.length, cuotas: db.cargos.length, remesas: db.remesas.length, salidas: db.salidas.length, tarjetas: db.tarjetas.length,
-        actividades: db.actividades.length, inscripciones: db.inscripciones.length, talonarios: db.talonarios.length, enseres: db.enseres.length, prestamos: db.prestamos.length, apuntes: (db.apuntes || []).length } };
+        actividades: db.actividades.length, inscripciones: db.inscripciones.length, talonarios: db.talonarios.length, enseres: db.enseres.length, prestamos: db.prestamos.length, apuntes: (db.apuntes || []).length, cargosJunta: (db.nombramientos || []).length } };
   };
 
   /* Reparaciones seguras: no borran importes ni cobros; los dejan sin persona («suprimido») o quitan referencias imposibles */
@@ -1769,6 +1783,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var huerfano = function (mid) { return mid && mid !== 'suprimido' && !miembros.has(mid); };
     db.cargos.forEach(function (c) { if (huerfano(c.miembroId)) { c.miembroId = 'suprimido'; n++; } });
     db.tarjetas.forEach(function (t) { if (huerfano(t.miembroId)) { t.miembroId = 'suprimido'; n++; } });
+    (db.nombramientos || []).forEach(function (x) { if (huerfano(x.miembroId)) { x.miembroId = 'suprimido'; n++; } });
     var salidas = new Set(db.salidas.map(function (s) { return s.id; })), antes = db.tarjetas.length;
     db.tarjetas = db.tarjetas.filter(function (t) { return salidas.has(t.salidaId); }); n += antes - db.tarjetas.length;
     db.salidas.forEach(function (s) {
@@ -2125,6 +2140,153 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (traspasos.length) hojas.push({ nombre: 'Traspasos ' + r.nombre, filas: [['Fecha', 'Desde', 'Hacia', 'Importe (€)', 'Concepto']].concat(traspasos.map(function (m) {
       return [A.fechaES(m.fecha), nomC(m.apunte.cuentaId), nomC(m.apunte.cuentaDestinoId), e(m.importeCent), m.concepto || '']; })) });
     return hojas;
+  };
+})(A);
+
+/* Alcancía · junta y cargos: quién ha ocupado cada cargo y cuándo.
+   Cada nombramiento une un cargo con una persona del censo (o un nombre escrito a mano, para épocas anteriores al
+   programa o para quien no es miembro, como el director espiritual) entre dos fechas. Sin fecha de cese, está vigente. */
+'use strict';
+(function (A) {
+  /* Cargos habituales de cada tipo de entidad. «unico»: solo una persona a la vez. */
+  var CARGOS = {
+    hermandad: [['Hermano Mayor', 1], ['Teniente de Hermano Mayor', 1], ['Consiliario', 0], ['Fiscal', 1], ['Secretario/a', 1], ['Vicesecretario/a', 1], ['Mayordomo/a', 1], ['Vicemayordomo/a', 1],
+      ['Prioste', 0], ['Diputado/a Mayor de Gobierno', 1], ['Diputado/a de Cultos', 1], ['Diputado/a de Caridad', 1], ['Diputado/a de Formación', 1], ['Diputado/a de Juventud', 1],
+      ['Capataz', 0], ['Vocal', 0], ['Director espiritual', 1], ['Camarera de la Virgen', 0]],
+    asociacion: [['Presidente/a', 1], ['Vicepresidente/a', 1], ['Secretario/a', 1], ['Tesorero/a', 1], ['Vocal', 0], ['Coordinador/a de sección', 0]],
+    ampa: [['Presidente/a', 1], ['Vicepresidente/a', 1], ['Secretario/a', 1], ['Tesorero/a', 1], ['Vocal', 0], ['Representante en el Consejo Escolar', 1], ['Delegado/a de curso', 0]],
+    club: [['Presidente/a', 1], ['Vicepresidente/a', 1], ['Secretario/a', 1], ['Tesorero/a', 1], ['Vocal', 0], ['Director/a deportivo/a', 1], ['Coordinador/a de cantera', 1], ['Entrenador/a', 0], ['Delegado/a de equipo', 0]],
+  };
+  A.nombreJunta = function (db) { return db.entidad.perfil === 'hermandad' ? 'Junta de gobierno' : 'Junta directiva'; };
+  A.gob = function (db) {
+    if (!db.gobierno) db.gobierno = { cargos: (CARGOS[db.entidad.perfil] || CARGOS.asociacion).map(function (c, i) { return { nombre: c[0], unico: !!c[1], orden: i }; }), renovaciones: [], duracionAnios: 4 };
+    if (!Array.isArray(db.nombramientos)) db.nombramientos = [];
+    return db.gobierno;
+  };
+  /* Orden de presentación: el del catálogo; los cargos escritos a mano, después */
+  A.ordenCargo = function (db, nombre) {
+    var c = A.gob(db).cargos.find(function (x) { return A.normaliza(x.nombre) === A.normaliza(nombre); });
+    return c ? c.orden : 900;
+  };
+  A.cargoUnico = function (db, nombre) {
+    var c = A.gob(db).cargos.find(function (x) { return A.normaliza(x.nombre) === A.normaliza(nombre); });
+    return !!(c && c.unico);
+  };
+  A.nombreDe = function (db, n) {
+    if (n.miembroId === 'suprimido') return 'Datos suprimidos';
+    if (n.miembroId) { var m = A.miembroPorId(db, n.miembroId); return m ? A.nombreCompleto(m) : 'Persona no encontrada'; }
+    return n.nombre || '';
+  };
+  A.vigenteEn = function (n, fecha) { return n.desde <= fecha && (!n.hasta || n.hasta >= fecha); };
+  var ordenar = function (db) { return function (a, b) { return A.ordenCargo(db, a.cargo) - A.ordenCargo(db, b.cargo) || A.comparaTexto(a.cargo, b.cargo) || (a.desde < b.desde ? -1 : 1); }; };
+
+  /* ---------- nombramientos ---------- */
+  A.revisaNombramiento = function (db, d) {
+    var errores = [], avisos = [];
+    if (!String(d.cargo || '').trim()) errores.push('Indica el cargo.');
+    if (!d.miembroId && !String(d.nombre || '').trim()) errores.push('Elige a la persona o escribe su nombre.');
+    if (d.miembroId && d.miembroId !== 'suprimido' && !A.miembroPorId(db, d.miembroId)) errores.push('La persona elegida no está en el censo.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.desde || '')) errores.push('Indica la fecha de toma de posesión.');
+    if (d.hasta && d.hasta < d.desde) errores.push('La fecha de cese es anterior a la de toma de posesión.');
+    if (!errores.length && A.cargoUnico(db, d.cargo)) {
+      var choca = db.nombramientos.filter(function (n) {
+        return n.id !== d.id && A.normaliza(n.cargo) === A.normaliza(d.cargo) && n.desde <= (d.hasta || '9999') && (n.hasta || '9999') >= d.desde;
+      });
+      if (choca.length) avisos.push('En esas fechas ya figura como ' + d.cargo + ' ' + choca.map(function (n) { return A.nombreDe(db, n) + ' (' + A.periodoTexto(n) + ')'; }).join(', ') + '.');
+    }
+    return { errores: errores, avisos: avisos };
+  };
+  A.guardarNombramiento = function (db, d) {
+    A.gob(db);
+    var r = A.revisaNombramiento(db, d);
+    if (r.errores.length) throw new Error(r.errores.join(' '));
+    var n = d.id ? db.nombramientos.find(function (x) { return x.id === d.id; }) : null;
+    if (!n) { n = { id: A.uid('nb'), creado: new Date().toISOString() }; db.nombramientos.push(n); }
+    Object.assign(n, { cargo: d.cargo.trim(), miembroId: d.miembroId || '', nombre: d.miembroId ? '' : String(d.nombre || '').trim(), desde: d.desde, hasta: d.hasta || '',
+      organo: d.organo || A.nombreJunta(db), observaciones: String(d.observaciones || '').trim(), renovacionId: d.renovacionId || n.renovacionId || '' });
+    // un cargo nuevo escrito a mano pasa al catálogo para poder elegirlo otra vez
+    if (A.ordenCargo(db, n.cargo) === 900) A.gob(db).cargos.push({ nombre: n.cargo, unico: false, orden: A.gob(db).cargos.length });
+    A.log(db, (d.id ? 'Modificado' : 'Nuevo') + ' cargo: ' + n.cargo + ' desde ' + A.fechaES(n.desde));
+    return { n: n, avisos: r.avisos };
+  };
+  A.cesar = function (db, id, fecha) {
+    var n = db.nombramientos.find(function (x) { return x.id === id; }); if (!n) return;
+    if (fecha < n.desde) throw new Error('La fecha de cese es anterior a la de toma de posesión.');
+    n.hasta = fecha; A.log(db, 'Cese en el cargo de ' + n.cargo + ' el ' + A.fechaES(fecha));
+  };
+  A.borrarNombramiento = function (db, id) {
+    var n = db.nombramientos.find(function (x) { return x.id === id; }); if (!n) return;
+    db.nombramientos = db.nombramientos.filter(function (x) { return x.id !== id; });
+    A.log(db, 'Borrado el cargo de ' + n.cargo + ' (' + A.periodoTexto(n) + ')');
+  };
+  A.periodoTexto = function (n) {
+    var a = n.desde ? A.fechaES(n.desde) : '?';
+    return n.hasta ? a + ' – ' + A.fechaES(n.hasta) : 'desde ' + a;
+  };
+  A.aniosEnCargo = function (n) {
+    var fin = n.hasta || A.hoyISO(), d = A.diasEntre(n.desde, fin);
+    return Math.round(d / 365.25 * 10) / 10;
+  };
+
+  /* ---------- consultas ---------- */
+  A.juntaEn = function (db, fecha) {
+    A.gob(db);
+    return db.nombramientos.filter(function (n) { return A.vigenteEn(n, fecha || A.hoyISO()); }).sort(ordenar(db));
+  };
+  A.historialCargo = function (db, cargo) {
+    A.gob(db);
+    return db.nombramientos.filter(function (n) { return A.normaliza(n.cargo) === A.normaliza(cargo); }).sort(function (a, b) { return a.desde < b.desde ? 1 : -1; });
+  };
+  A.cargosDePersona = function (db, miembroId) {
+    A.gob(db);
+    return db.nombramientos.filter(function (n) { return n.miembroId === miembroId; }).sort(function (a, b) { return a.desde < b.desde ? 1 : -1; });
+  };
+  /* Cargos con historia: los del catálogo que se han usado alguna vez y los escritos a mano */
+  A.cargosUsados = function (db) {
+    var vistos = {}, r = [];
+    db.nombramientos.slice().sort(ordenar(db)).forEach(function (n) { var k = A.normaliza(n.cargo); if (!vistos[k]) { vistos[k] = 1; r.push(n.cargo); } });
+    return r;
+  };
+  /* Cargos únicos del catálogo que hoy no tiene nadie */
+  A.cargosVacantes = function (db, fecha) {
+    var ocupados = {}; A.juntaEn(db, fecha).forEach(function (n) { ocupados[A.normaliza(n.cargo)] = 1; });
+    return A.gob(db).cargos.filter(function (c) { return c.unico && !ocupados[A.normaliza(c.nombre)] && db.nombramientos.some(function (n) { return A.normaliza(n.cargo) === A.normaliza(c.nombre); }); }).map(function (c) { return c.nombre; });
+  };
+
+  /* ---------- renovación de la junta (elecciones) ----------
+     Cesan el día anterior quienes estaban y toman posesión los nuevos; quien repite en el mismo cargo sigue con un mandato nuevo. */
+  A.renovarJunta = function (db, d) {
+    var g = A.gob(db);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.fecha || '')) throw new Error('Indica la fecha de toma de posesión.');
+    var filas = (d.cargos || []).filter(function (x) { return x.cargo && (x.miembroId || String(x.nombre || '').trim()); });
+    if (!filas.length) throw new Error('Indica al menos un cargo de la nueva junta.');
+    var ayer = A.diaAnterior ? A.diaAnterior(d.fecha) : d.fecha;
+    var ren = { id: A.uid('rv'), fecha: d.fecha, acto: String(d.acto || '').trim(), observaciones: String(d.observaciones || '').trim() };
+    db.nombramientos.forEach(function (n) {
+      if ((!n.hasta || n.hasta >= d.fecha) && n.desde < d.fecha && (n.organo || A.nombreJunta(db)) === A.nombreJunta(db)) n.hasta = ayer;
+    });
+    filas.forEach(function (x) {
+      db.nombramientos.push({ id: A.uid('nb'), creado: new Date().toISOString(), cargo: x.cargo.trim(), miembroId: x.miembroId || '', nombre: x.miembroId ? '' : String(x.nombre).trim(),
+        desde: d.fecha, hasta: '', organo: A.nombreJunta(db), observaciones: ren.acto, renovacionId: ren.id });
+    });
+    g.renovaciones.unshift(ren);
+    A.log(db, 'Renovación de la ' + A.nombreJunta(db).toLowerCase() + ' con fecha ' + A.fechaES(d.fecha) + ' (' + filas.length + ' cargos)');
+    return ren;
+  };
+  /* Fecha en que termina el mandato de la junta actual (según la última renovación y la duración de los estatutos) */
+  A.finMandato = function (db) {
+    var g = A.gob(db), r = g.renovaciones[0];
+    var inicio = r ? r.fecha : (A.juntaEn(db).map(function (n) { return n.desde; }).sort().pop() || '');
+    if (!inicio || !g.duracionAnios) return '';
+    return (+inicio.slice(0, 4) + +g.duracionAnios) + inicio.slice(4);
+  };
+
+  A.hojaCargos = function (db) {
+    A.gob(db);
+    return { nombre: 'Cargos', filas: [['Cargo', 'Nº', 'Nombre', 'Toma de posesión', 'Cese', 'Órgano', 'Observaciones']].concat(db.nombramientos.slice().sort(ordenar(db)).map(function (n) {
+      var m = n.miembroId && n.miembroId !== 'suprimido' ? A.miembroPorId(db, n.miembroId) : null;
+      return [n.cargo, m ? +m.numero || '' : '', A.nombreDe(db, n), A.fechaES(n.desde), n.hasta ? A.fechaES(n.hasta) : 'vigente', n.organo || '', n.observaciones || ''];
+    })) };
   };
 })(A);
 
@@ -2974,6 +3136,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     percha: '<path d="M12 7a2 2 0 1 1 2-2c0 1.2-2 1.5-2 3v1"/><path d="M12 9 3 16.5a1.3 1.3 0 0 0 .8 2.3h16.4a1.3 1.3 0 0 0 .8-2.3L12 9Z"/>',
     corazon: '<path d="M12 20s-7.5-4.6-9-9.3C1.9 7.2 4.3 4 7.5 4c1.9 0 3.4 1 4.5 2.6C13.1 5 14.6 4 16.5 4c3.2 0 5.6 3.2 4.5 6.7-1.5 4.7-9 9.3-9 9.3Z"/>',
     cartera: '<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/><path d="M6 6V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>',
+    medalla: '<circle cx="12" cy="15" r="6"/><path d="M8.5 10.2 6 3h4l2 5 2-5h4l-2.5 7.2"/><path d="m12 12.5.9 1.8 2 .3-1.4 1.4.3 2-1.8-.9-1.8.9.3-2-1.4-1.4 2-.3z"/>',
     historial: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 3"/>',
   };
   A.icono = function (n, t) {
@@ -3425,6 +3588,27 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     A.fijarPresupuesto(db, ej, pres);
   }
 
+  /* Junta de ejemplo: presidencias de otras épocas (personas fuera del censo) y dos juntas con miembros del censo */
+  function ejemploJunta(db) {
+    var g = A.gob(db), anio = +A.hoyISO().slice(0, 4), her = db.entidad.perfil === 'hermandad';
+    var pres = her ? 'Hermano Mayor' : 'Presidente/a';
+    var antiguos = ['Manuel Ortega Ruiz', 'Francisco Molina Gil', 'Carmen Vázquez Torres', 'José Navarro Romero', 'Antonio Gil Serrano'];
+    antiguos.forEach(function (n, i) {
+      var desde = (anio - 26 + i * 4) + '-06-15', hasta = (anio - 22 + i * 4) + '-06-14';
+      A.guardarNombramiento(db, { cargo: pres, nombre: n, desde: desde, hasta: hasta, observaciones: her ? 'Elegido en cabildo general' : 'Elegido en asamblea general' });
+    });
+    var altas = A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta' && A.edad(m.fechaNacimiento) >= 18; }), 'numero');
+    if (altas.length < 12) altas = A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero');
+    var cargos = her ? ['Hermano Mayor', 'Teniente de Hermano Mayor', 'Secretario/a', 'Mayordomo/a', 'Fiscal', 'Diputado/a Mayor de Gobierno', 'Diputado/a de Caridad', 'Prioste']
+      : ['Presidente/a', 'Vicepresidente/a', 'Secretario/a', 'Tesorero/a', 'Vocal', 'Vocal'];
+    var junta = function (desplazamiento) { return cargos.map(function (c, i) { var m = altas[(i * 3 + desplazamiento) % altas.length]; return { cargo: c, miembroId: m.id }; }); };
+    A.renovarJunta(db, { fecha: (anio - 6) + '-06-15', acto: her ? 'Cabildo general de elecciones' : 'Asamblea general extraordinaria', cargos: junta(1) });
+    var nueva = junta(1); nueva[0] = { cargo: cargos[0], miembroId: altas[5 % altas.length].id }; nueva[2] = { cargo: cargos[2], miembroId: altas[8 % altas.length].id };
+    if (her) nueva.push({ cargo: 'Director espiritual', nombre: 'Rvdo. D. Luis Pardo Marín' });
+    A.renovarJunta(db, { fecha: (anio - 2) + '-06-15', acto: her ? 'Cabildo general de elecciones' : 'Asamblea general extraordinaria', cargos: nueva });
+    g.duracionAnios = 4;
+  }
+
   A.rellenarEjemplo = function (db) {
     db.ejemplo = true;
     db.entidad.logo = A.escudoEjemplo(db.entidad.nombre, db.entidad.perfil);
@@ -3469,6 +3653,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (db.entidad.perfil === 'hermandad') ejemploCofradia(db, rnd, elige);
     ejemploActividades(db, rnd, elige);
     ejemploTesoreria(db);
+    ejemploJunta(db);
     db.ultimaCopia = null;
     A.log(db, 'Cargados datos de ejemplo (inventados)');
   };
@@ -3499,6 +3684,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (A.usaDonativos(db) && (mes === 1 || mes === 12)) avisos.push(['info', 'En enero se presenta el modelo 182 con los donativos de ' + (mes === 1 ? +A.hoyISO().slice(0, 4) - 1 : A.hoyISO().slice(0, 4)) + ' y se entregan los certificados.', '#/donativos', 'Preparar']);
     var actPend = db.actividades.filter(function (a) { return a.estado === 'abierta' && a.tipo !== 'loteria'; }).map(function (a) { return [a, A.resumenActividad(db, a.id)]; }).filter(function (x) { return x[1].deben; })[0];
     if (actPend) avisos.push(['info', actPend[1].deben + ' inscritos en «' + actPend[0].nombre + '» tienen pagos pendientes.', '#/actividades?id=' + actPend[0].id, 'Ver']);
+    var finM = db.nombramientos && db.nombramientos.length ? A.finMandato(db) : '';
+    if (finM && A.diasEntre(A.hoyISO(), finM) <= 90) avisos.push(['info', (finM < A.hoyISO() ? 'El mandato de la ' + A.nombreJunta(db).toLowerCase() + ' terminó el ' : 'El mandato de la ' + A.nombreJunta(db).toLowerCase() + ' termina el ') + A.fechaES(finM) + ': toca convocar elecciones o renovar la junta.', '#/junta', 'Ver la junta']);
     var viejas = A.bajasParaSuprimir(db).length;
     if (viejas) avisos.push(['atencion', viejas + ' bajas superan el plazo de conservación de datos.', '#/rgpd', 'Revisar']);
 
@@ -3658,7 +3845,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         cargos.map(function (x) { return '<tr><td>' + A.esc(x.periodo) + '</td><td>' + A.esc(x.concepto) + '</td><td class="num">' + A.euros(x.importeCent) + '</td><td>' + estadoCargo(x) + '</td></tr>'; }).join('') +
         '</tbody></table></div>' : '<p class="gris">Sin cuotas generadas.</p>') + '</fieldset>' : '') +
       (id && v.salidas ? tarjetasHTML(db, id) : '') +
-      (id ? prestamosHTML(db, id) + actividadesHTML(db, id) : '') +
+      (id ? A.cargosFichaHTML(db, id) + prestamosHTML(db, id) + actividadesHTML(db, id) : '') +
       '<div id="revision" aria-live="polite"></div></form>';
 
     var botones = [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (raiz) {
@@ -4437,6 +4624,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       bloque('Actividades y lotería', '<p>En <a href="#/actividades">Actividades</a> crea la excursión, comida o campamento con sus precios y plazas, inscribe a ' + v.miembros + ' o a personas de fuera y registra los pagos, también a plazos. Para la lotería, crea una actividad de tipo «Lotería», entrega los talonarios a cada responsable y liquídalos cuando devuelvan el dinero.</p>') +
       (A.usaEnseres(db) ? bloque(A.nombreEnseres(db) + ' y préstamos', '<p>Da de alta las piezas (o muchas a la vez con «Alta de varias piezas»), préstalas con fecha de devolución y fianza, e imprime el recibo para firmar. El panel avisa de los préstamos fuera de plazo.</p>') : '') +
       (A.usaDonativos(db) ? bloque('Donativos y modelo 182', '<p>Marca como deducibles los tipos de cuota de afiliación y registra los donativos sueltos. En <a href="#/donativos">Donativos</a> imprime los certificados y descarga en enero el fichero del modelo 182 para subirlo en la sede de la Agencia Tributaria (Presentación mediante fichero). La sede revisa el fichero antes de presentarlo: si avisa de algún error, corrígelo y vuelve a descargarlo.</p>') : '') +
+      bloque('Junta y cargos', '<p>En <a href="#/junta">Junta y cargos</a> pulsa «Renovar la junta» para dar de alta la ' + A.nombreJunta(db).toLowerCase() + ' de una vez, con la fecha de toma de posesión. En cada renovación, quienes tenían cargo cesan el día anterior y queda todo en el historial. ' +
+        'Puedes apuntar cargos de otras épocas aunque esas personas no estén en el censo: escribe su nombre. Consulta quién tenía cada cargo en una fecha, la relación histórica de cada cargo y los cargos de cada persona en su ficha, e imprime el certificado de composición de la junta (lo piden bancos y registros) o el de cargos desempeñados.</p>') +
       bloque('Tesorería y libro de caja', '<p>En <a href="#/tesoreria">Tesorería</a> indica primero el dinero con el que empezáis en el banco y en la caja. Las cuotas, remesas cobradas, recibos devueltos, tarjetas, actividades, lotería, donativos y fianzas entran solos en el libro; apunta a mano los gastos y los demás ingresos, con su partida y el número de factura. ' +
         '«Comprobar saldo» compara el libro con el extracto del banco o con el dinero contado. Para la asamblea, prepara el presupuesto e imprime el <strong>estado de cuentas</strong> del ejercicio, o descárgalo en Excel.</p>') +
       bloque('¿Y si se olvida la contraseña?', '<p>En la pantalla de entrada, pulsa «¿Habéis olvidado la contraseña?» y escribe la <strong>llave de recuperación</strong> impresa: entraréis y elegiréis una contraseña nueva. La llave también abre las copias de seguridad hechas después de crearla. Puedes crear una llave nueva en <a href="#/datos">Datos y copias</a> si la anterior se pierde.</p>') +
@@ -5823,10 +6012,232 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   }
 })(A);
 
+/* Alcancía · pantalla de junta y cargos: junta actual o a una fecha, historial por cargo, renovación e impresos */
+'use strict';
+(function (A) {
+  var estado = { fecha: '', cargo: '' };
+
+  /* Un único campo para elegir a alguien del censo («12 · Nombre Apellidos») o escribir otro nombre */
+  function datalistMiembros(db) {
+    return '<datalist id="dl-miembros">' + A.ordenarPor(db.miembros, 'numero').map(function (m) {
+      return '<option value="' + A.esc(m.numero + ' · ' + A.nombreCompleto(m)) + '"></option>';
+    }).join('') + '</datalist>';
+  }
+  function textoPersona(db, n) {
+    if (!n) return '';
+    if (n.miembroId && n.miembroId !== 'suprimido') { var m = A.miembroPorId(db, n.miembroId); return m ? m.numero + ' · ' + A.nombreCompleto(m) : ''; }
+    return n.miembroId === 'suprimido' ? '' : n.nombre || '';
+  }
+  A.leerPersona = function (db, texto) {
+    var t = String(texto || '').trim(), x = /^(\d+)\s*·/.exec(t);
+    if (x) { var ms = A.indice(db).porNumero.get(x[1]) || []; var m = ms.find(function (y) { return t === y.numero + ' · ' + A.nombreCompleto(y); }) || ms[0]; if (m) return { miembroId: m.id, nombre: '' }; }
+    if (/^\d+$/.test(t)) { var k = (A.indice(db).porNumero.get(t) || [])[0]; if (k) return { miembroId: k.id, nombre: '' }; }
+    return { miembroId: '', nombre: t };
+  };
+  function enlacePersona(db, n) {
+    var nom = A.esc(A.nombreDe(db, n));
+    if (n.miembroId && n.miembroId !== 'suprimido' && A.miembroPorId(db, n.miembroId)) return '<a href="#/miembros?id=' + n.miembroId + '">' + nom + '</a>';
+    return nom + (n.miembroId ? '' : ' <span class="gris fuera">· fuera del censo</span>');
+  }
+  function anios(n) {
+    var a = A.aniosEnCargo(n), m = Math.round(a * 12);
+    if (a >= 1) return String(a).replace('.', ',') + (a === 1 ? ' año' : ' años');
+    return m < 1 ? 'menos de un mes' : m === 1 ? '1 mes' : m + ' meses';
+  }
+
+  A.rutas.junta = function (c, params) {
+    var db = A.S.db, g = A.gob(db), pest = params.pestana || 'actual', v = A.vocab(db);
+    c.innerHTML = '<div class="titulo-pagina"><h1>Junta y cargos</h1><button data-j="nuevo">' + A.icono('mas') + ' Añadir cargo</button>' +
+      '<button class="principal" data-j="renovar">Renovar la junta</button></div>' +
+      '<div class="pestanas" role="tablist">' + [['actual', A.nombreJunta(db)], ['historial', 'Historial de cargos']].map(function (p) {
+        return '<button role="tab" aria-selected="' + (pest === p[0]) + '" data-pest="' + p[0] + '">' + p[1] + '</button>'; }).join('') + '</div><div id="contenido-junta"></div>' + datalistMiembros(db);
+    c.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-pest]'); if (b) return A.ir('junta?pestana=' + b.getAttribute('data-pest'));
+      b = e.target.closest('[data-j]'); if (!b) return;
+      var k = b.getAttribute('data-j');
+      if (k === 'nuevo') A.dialogoNombramiento(db, { cargo: pest === 'historial' ? estado.cargo : '' });
+      if (k === 'renovar') dialogoRenovar(db);
+    });
+    var cont = A.$('#contenido-junta', c);
+    if (pest === 'historial') return historial(cont, db);
+    actual(cont, db, g, v);
+  };
+
+  /* ---------- junta actual o a una fecha ---------- */
+  function actual(cont, db, g, v) {
+    var hoy = A.hoyISO(), fecha = estado.fecha || hoy, junta = A.juntaEn(db, fecha), fin = A.finMandato(db), vac = fecha === hoy ? A.cargosVacantes(db, hoy) : [];
+    var ultima = g.renovaciones[0];
+    cont.innerHTML = '<div class="barra"><div>' + A.campo('fecha', 'Junta vigente el día', fecha, { tipo: 'date' }) + '</div>' +
+      (fecha !== hoy ? '<div style="padding-bottom:12px"><button data-hoy>Volver a hoy</button></div>' : '') + '<div class="crece"></div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button data-imp="composicion"' + (junta.length ? '' : ' disabled') + '>' + A.icono('imprimir') + ' Certificado de composición</button></div></div>' +
+      (fecha === hoy && fin ? '<p class="gris">' + (ultima ? 'Tomó posesión el ' + A.fechaES(ultima.fecha) + (ultima.acto ? ' (' + A.esc(ultima.acto) + ')' : '') + '. ' : '') +
+        'Mandato de ' + g.duracionAnios + ' años: termina el <strong>' + A.fechaES(fin) + '</strong>. <button class="mini" data-dur>Cambiar la duración</button></p>' : '') +
+      (vac.length ? '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>Sin nadie ahora mismo: ' + vac.map(A.esc).join(', ') + '.</p></div></div>' : '') +
+      (junta.length ? '<div class="tabla-envoltorio"><table><thead><tr><th>Cargo</th><th>Nombre</th><th>Desde</th><th>Tiempo en el cargo</th><th><span class="sr">Acciones</span></th></tr></thead><tbody>' +
+        junta.map(function (n) {
+          return '<tr><td><strong>' + A.esc(n.cargo) + '</strong></td><td>' + enlacePersona(db, n) + '</td><td>' + A.fechaES(n.desde) + (n.hasta ? ' <span class="gris">hasta ' + A.fechaES(n.hasta) + '</span>' : '') + '</td><td>' + anios(n) + '</td>' +
+            '<td><div class="fila-acciones"><button class="mini" data-cargo-hist="' + A.esc(n.cargo) + '">Historial</button><button class="mini" data-editar="' + n.id + '">Editar</button>' +
+            (!n.hasta ? '<button class="mini" data-cesar="' + n.id + '">Cese</button>' : '') + '</div></td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<div class="tarjeta vacio"><p>' + (db.nombramientos.length ? 'No había nadie con cargo en esa fecha.' : 'Todavía no hay cargos. Pulsa «Renovar la junta» para dar de alta la ' + A.nombreJunta(db).toLowerCase() + ' actual de una vez, o «Añadir cargo» para ir uno a uno.') + '</p>' +
+          '<p class="gris">Puedes apuntar también los cargos de otras épocas, aunque esas personas no estén en el censo: escribe su nombre.</p></div>');
+    A.$('input[name=fecha]', cont).addEventListener('change', function (e) { estado.fecha = e.target.value; A.pintar(); });
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.hasAttribute('data-hoy')) { estado.fecha = ''; return A.pintar(); }
+      if (b.hasAttribute('data-imp')) return imprimirComposicion(db, fecha);
+      if (b.hasAttribute('data-dur')) return dialogoDuracion(db);
+      if (b.hasAttribute('data-cargo-hist')) { estado.cargo = b.getAttribute('data-cargo-hist'); return A.ir('junta?pestana=historial'); }
+      if (b.hasAttribute('data-editar')) return A.dialogoNombramiento(db, db.nombramientos.find(function (n) { return n.id === b.getAttribute('data-editar'); }));
+      if (b.hasAttribute('data-cesar')) return dialogoCese(db, db.nombramientos.find(function (n) { return n.id === b.getAttribute('data-cesar'); }));
+    });
+  }
+
+  /* ---------- historial ---------- */
+  function historial(cont, db) {
+    var usados = A.cargosUsados(db);
+    if (!usados.length) { cont.innerHTML = '<div class="tarjeta vacio"><p>Todavía no hay cargos apuntados.</p></div>'; return; }
+    if (estado.cargo !== '*' && !usados.some(function (x) { return A.normaliza(x) === A.normaliza(estado.cargo); })) estado.cargo = usados[0];
+    var todos = estado.cargo === '*', lista = todos ? db.nombramientos.slice().sort(function (a, b) { return a.desde < b.desde ? 1 : -1; }) : A.historialCargo(db, estado.cargo);
+    cont.innerHTML = '<div class="barra"><div>' + A.campo('cargo', 'Cargo', estado.cargo, { opciones: usados.map(function (x) { return [x, x]; }).concat([['*', 'Todos los cargos']]) }) + '</div>' +
+      '<div class="crece">' + A.campo('buscar', 'Buscar persona', '', { tipo: 'search', ph: 'Nombre o número' }) + '</div>' +
+      '<div style="padding-bottom:12px" class="fila-acciones"><button data-imp>' + A.icono('imprimir') + ' Imprimir la relación</button></div></div><div id="lista-hist"></div>';
+    var pinta = function (q) {
+      q = A.normaliza(q || '');
+      var filas = (q ? db.nombramientos.slice().sort(function (a, b) { return a.desde < b.desde ? 1 : -1; }) : lista).filter(function (n) {
+        if (!q) return true; var m = n.miembroId && A.miembroPorId(db, n.miembroId);
+        return A.normaliza(A.nombreDe(db, n)).indexOf(q) >= 0 || (m && String(m.numero) === q);
+      });
+      A.$('#lista-hist', cont).innerHTML = filas.length ? '<ol class="cronologia">' + filas.map(function (n) {
+        return '<li class="' + (n.hasta ? '' : 'vigente') + '"><div class="cr-fechas">' + A.periodoTexto(n) + '</div><div class="cr-cuerpo"><strong>' + enlacePersona(db, n) + '</strong>' +
+          '<span class="gris"> · ' + (todos || q ? A.esc(n.cargo) + ' · ' : '') + anios(n) + (n.hasta ? '' : ' · en el cargo') + (n.observaciones ? ' · ' + A.esc(n.observaciones) : '') + '</span></div>' +
+          '<div class="fila-acciones"><button class="mini" data-editar="' + n.id + '">Editar</button></div></li>';
+      }).join('') + '</ol>' : '<div class="tarjeta vacio">Sin resultados.</div>';
+    };
+    pinta('');
+    A.$('select[name=cargo]', cont).addEventListener('change', function (e) { estado.cargo = e.target.value; A.pintar(); });
+    A.$('input[name=buscar]', cont).addEventListener('input', A.debounce(function (e) { pinta(e.target.value); }, 150));
+    cont.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.hasAttribute('data-imp')) return imprimirRelacion(db, todos ? null : estado.cargo, lista);
+      if (b.hasAttribute('data-editar')) A.dialogoNombramiento(db, db.nombramientos.find(function (n) { return n.id === b.getAttribute('data-editar'); }));
+    });
+  }
+
+  /* ---------- diálogos ---------- */
+  A.dialogoNombramiento = function (db, n, alGuardar) {
+    var g = A.gob(db), nuevo = !(n && n.id), x = Object.assign({ cargo: '', miembroId: '', nombre: '', desde: A.hoyISO(), hasta: '', observaciones: '' }, n || {});
+    var botones = [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+      var f = A.leerForm(A.$('#f-nombr', r)), p = A.leerPersona(db, f.persona);
+      if (x.miembroId === 'suprimido' && !String(f.persona).trim()) p = { miembroId: 'suprimido', nombre: '' };
+      var res = A.guardarNombramiento(db, { id: x.id, cargo: f.cargo, miembroId: p.miembroId, nombre: p.nombre, desde: f.desde, hasta: f.hasta, observaciones: f.observaciones });
+      A.guardar(); if (res.avisos.length) A.toast(res.avisos.join(' '), 'mal');
+    } }];
+    if (!nuevo) botones.unshift({ texto: 'Borrar', valor: 'borrar', clase: 'peligro', izq: true });
+    A.modal({ titulo: nuevo ? 'Añadir cargo' : 'Cargo de ' + x.cargo, html: '<form id="f-nombr" novalidate>' +
+      A.campo('cargo', 'Cargo', x.cargo, { requerido: true, attrs: ' list="dl-cargos" autocomplete="off"', ph: 'Elige o escribe el cargo' }) +
+      '<datalist id="dl-cargos">' + g.cargos.map(function (c) { return '<option value="' + A.esc(c.nombre) + '"></option>'; }).join('') + '</datalist>' +
+      A.campo('persona', 'Persona', textoPersona(db, x), { requerido: true, attrs: ' list="dl-miembros" autocomplete="off"', ph: 'Número o nombre', ayuda: 'Elige a alguien del censo o escribe el nombre de quien no está (por ejemplo, de otra época).' + (x.miembroId === 'suprimido' ? ' Sus datos se suprimieron.' : '') }) +
+      '<div class="columnas">' + A.campo('desde', 'Toma de posesión', x.desde, { tipo: 'date', requerido: true }) + A.campo('hasta', 'Cese (vacío si sigue)', x.hasta, { tipo: 'date' }) + '</div>' +
+      A.campo('observaciones', 'Observaciones', x.observaciones, { ph: 'Elegido en el cabildo de…, nombrado por…' }) + '</form>' + (document.getElementById('dl-miembros') ? '' : datalistMiembros(db)),
+      alAbrir: function (r) { A.$(nuevo && !x.cargo ? 'input[name=cargo]' : 'input[name=persona]', r).focus(); },
+      botones: botones }).then(function (r) {
+      if (r === 'borrar') return A.confirmar('Borrar cargo', 'Se borrará del historial que ' + A.nombreDe(db, x) + ' fue ' + x.cargo + ' (' + A.periodoTexto(x) + '). Si ha dejado el cargo, usa mejor «Cese».', 'Borrar', true)
+        .then(function (ok) { if (ok) { A.borrarNombramiento(db, x.id); A.guardar(); A.pintar(); } });
+      if (r) { if (alGuardar) alGuardar(); else A.pintar(); }
+    });
+  };
+  function dialogoCese(db, n) {
+    A.modal({ titulo: 'Cese de ' + A.nombreDe(db, n), html: '<p>' + A.esc(n.cargo) + ' desde el ' + A.fechaES(n.desde) + '.</p><form id="f-cese" novalidate>' + A.campo('fecha', 'Fecha de cese', A.hoyISO(), { tipo: 'date' }) + '</form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Registrar el cese', valor: true, clase: 'principal', antes: function (r) { A.cesar(db, n.id, A.$('input[name=fecha]', r).value); A.guardar(); } }] })
+      .then(function (r) { if (r) A.pintar(); });
+  }
+  function dialogoDuracion(db) {
+    var g = A.gob(db);
+    A.modal({ titulo: 'Duración del mandato', html: '<form id="f-dur" novalidate>' + A.campo('anios', 'Años que dura el mandato según los estatutos', g.duracionAnios, { tipo: 'number', attrs: ' min="0" max="10"', ayuda: '0 si no queréis el aviso de fin de mandato.' }) + '</form>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) { g.duracionAnios = Math.max(0, Math.min(10, +A.$('input[name=anios]', r).value || 0)); A.guardar(); } }] })
+      .then(function (r) { if (r) A.pintar(); });
+  }
+
+  /* Renovar: la nueva junta parte de la actual (quien repite, se deja); se añaden filas para más cargos */
+  function dialogoRenovar(db) {
+    var g = A.gob(db), actual = A.juntaEn(db), filas = actual.map(function (n) { return { cargo: n.cargo, persona: textoPersona(db, n) }; });
+    if (!filas.length) filas = g.cargos.filter(function (c) { return c.unico; }).slice(0, 6).map(function (c) { return { cargo: c.nombre, persona: '' }; });
+    var fila = function (f) { return '<div class="barra fila-ren"><div>' + A.campo('rc', 'Cargo', f.cargo, { attrs: ' list="dl-cargos-ren" autocomplete="off"' }) + '</div><div class="crece">' +
+      A.campo('rp', 'Persona', f.persona, { attrs: ' list="dl-miembros" autocomplete="off"', ph: 'Número o nombre' }) + '</div><div style="padding-bottom:12px"><button type="button" class="mini" data-quitar>Quitar</button></div></div>'; };
+    A.modal({ titulo: 'Renovar la ' + A.nombreJunta(db).toLowerCase(), ancho: true, html: '<p>Tras unas elecciones o un nombramiento. Quienes tienen cargo ahora cesan el día anterior y la nueva junta toma posesión en la fecha que indiques. La lista parte de la junta actual: cambia solo lo que cambie.</p>' +
+      '<form id="f-ren" novalidate><div class="columnas">' + A.campo('fecha', 'Toma de posesión', A.hoyISO(), { tipo: 'date', requerido: true }) +
+      A.campo('acto', 'Acto', '', { ph: (db.entidad.perfil === 'hermandad' ? 'Cabildo general de elecciones' : 'Asamblea general extraordinaria') + ' del…' }) + '</div>' +
+      '<datalist id="dl-cargos-ren">' + g.cargos.map(function (c) { return '<option value="' + A.esc(c.nombre) + '"></option>'; }).join('') + '</datalist>' +
+      '<div id="filas-ren">' + filas.map(fila).join('') + '</div><button type="button" class="mini" id="b-fila-ren">' + A.icono('mas') + ' Añadir cargo</button></form>',
+      alAbrir: function (r) {
+        A.$('#b-fila-ren', r).addEventListener('click', function () { A.$('#filas-ren', r).insertAdjacentHTML('beforeend', fila({ cargo: '', persona: '' })); });
+        A.$('#filas-ren', r).addEventListener('click', function (e) { if (e.target.closest('[data-quitar]')) e.target.closest('.fila-ren').remove(); });
+      },
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Renovar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-ren', r));
+        var cargos = A.$$('.fila-ren', r).map(function (el) {
+          var p = A.leerPersona(db, A.$('input[name=rp]', el).value);
+          return { cargo: A.$('input[name=rc]', el).value.trim(), miembroId: p.miembroId, nombre: p.nombre };
+        });
+        if (cargos.some(function (x) { return x.cargo && !x.miembroId && !x.nombre; })) throw new Error('Hay cargos sin persona: rellénalos o quítalos.');
+        A.renovarJunta(db, { fecha: f.fecha, acto: f.acto, cargos: cargos }); A.guardar();
+      } }] }).then(function (r) { if (r) { estado.fecha = ''; A.toast('Junta renovada.'); A.ir('junta'); } });
+  }
+
+  /* ---------- impresos ---------- */
+  function firmante(db, re) { var n = A.juntaEn(db).find(function (x) { return re.test(x.cargo); }); return n ? A.nombreDe(db, n) : '____________________'; }
+  function firmas(db) {
+    return '<div class="firmas"><div>La secretaría<br><br><br>Fdo.: ' + A.esc(firmante(db, /^secretari/i)) + '</div>' +
+      '<div>Visto bueno, ' + (db.entidad.perfil === 'hermandad' ? 'el Hermano Mayor' : 'la presidencia') + '<br><br><br>Fdo.: ' + A.esc(firmante(db, /^(presidente|hermano mayor)/i)) + '</div></div>';
+  }
+  function imprimirComposicion(db, fecha) {
+    var e = db.entidad, junta = A.juntaEn(db, fecha);
+    A.imprimir('Certificado de composición de la ' + A.nombreJunta(db).toLowerCase(), '<div class="certificado">' +
+      '<p>D./Dña. ' + A.esc(firmante(db, /^secretari/i)) + ', en calidad de secretario/a de ' + A.esc(e.nombre) + (e.nif ? ', con NIF ' + A.esc(e.nif) : '') + ',</p><p><strong>CERTIFICA:</strong></p>' +
+      '<p>Que, según consta en los archivos de la entidad, a fecha ' + A.fechaES(fecha) + ' la ' + A.nombreJunta(db).toLowerCase() + ' está compuesta por:</p>' +
+      '<table class="tabla-cuentas"><thead><tr><th>Cargo</th><th>Nombre y apellidos</th><th>DNI/NIE</th><th>Toma de posesión</th></tr></thead><tbody>' + junta.map(function (n) {
+        var m = n.miembroId && n.miembroId !== 'suprimido' ? A.miembroPorId(db, n.miembroId) : null;
+        return '<tr><td>' + A.esc(n.cargo) + '</td><td>' + A.esc(A.nombreDe(db, n)) + '</td><td>' + A.esc(m && m.documento || '') + '</td><td>' + A.fechaES(n.desde) + '</td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<p>Y para que conste a los efectos oportunos, se expide el presente certificado en ' + A.esc(e.localidad || '____________') + ', a ' + A.fechaES(A.hoyISO()) + '.</p>' + firmas(db) + '</div>');
+    A.log(db, 'Certificado de composición de la junta a ' + A.fechaES(fecha)); A.guardar();
+  }
+  function imprimirRelacion(db, cargo, lista) {
+    var filas = cargo ? lista : db.nombramientos.slice().sort(function (a, b) { return A.ordenCargo(db, a.cargo) - A.ordenCargo(db, b.cargo) || (a.desde < b.desde ? -1 : 1); });
+    if (cargo) filas = filas.slice().reverse();
+    A.imprimir(cargo ? 'Relación histórica · ' + cargo : 'Relación histórica de cargos', '<table class="tabla-cuentas"><thead><tr>' + (cargo ? '<th>Nº</th>' : '<th>Cargo</th>') + '<th>Nombre</th><th>Desde</th><th>Hasta</th><th>Observaciones</th></tr></thead><tbody>' +
+      filas.map(function (n, i) { return '<tr><td>' + (cargo ? i + 1 : A.esc(n.cargo)) + '</td><td>' + A.esc(A.nombreDe(db, n)) + '</td><td>' + A.fechaES(n.desde) + '</td><td>' + (n.hasta ? A.fechaES(n.hasta) : 'en el cargo') + '</td><td>' + A.esc(n.observaciones || '') + '</td></tr>'; }).join('') +
+      '</tbody></table>');
+  }
+  A.imprimirCargosPersona = function (db, miembroId) {
+    var m = A.miembroPorId(db, miembroId), l = A.cargosDePersona(db, miembroId).slice().reverse(), e = db.entidad;
+    if (!m || !l.length) return A.toast('No tiene cargos registrados.', 'mal');
+    A.imprimir('Certificado de cargos desempeñados', '<div class="certificado"><p>D./Dña. ' + A.esc(firmante(db, /^secretari/i)) + ', en calidad de secretario/a de ' + A.esc(e.nombre) + (e.nif ? ', con NIF ' + A.esc(e.nif) : '') + ',</p><p><strong>CERTIFICA:</strong></p>' +
+      '<p>Que, según consta en los archivos de la entidad, D./Dña. <strong>' + A.esc(A.nombreCompleto(m)) + '</strong>' + (m.documento ? ', con DNI/NIE ' + A.esc(m.documento) : '') + ', ' + A.vocab(db).miembro + ' nº ' + A.esc(m.numero) + ', ha desempeñado los siguientes cargos:</p>' +
+      '<table class="tabla-cuentas"><thead><tr><th>Cargo</th><th>Desde</th><th>Hasta</th></tr></thead><tbody>' + l.map(function (n) { return '<tr><td>' + A.esc(n.cargo) + '</td><td>' + A.fechaES(n.desde) + '</td><td>' + (n.hasta ? A.fechaES(n.hasta) : 'en la actualidad') + '</td></tr>'; }).join('') + '</tbody></table>' +
+      '<p>Y para que conste a los efectos oportunos, se expide el presente certificado en ' + A.esc(e.localidad || '____________') + ', a ' + A.fechaES(A.hoyISO()) + '.</p>' + firmas(db) + '</div>');
+    A.log(db, 'Certificado de cargos del nº ' + m.numero); A.guardar();
+  };
+
+  if (typeof document !== 'undefined') document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-cert-cargos]'); if (b && A.S.db) A.imprimirCargosPersona(A.S.db, b.getAttribute('data-cert-cargos'));
+  });
+
+  /* Bloque para la ficha de cada miembro */
+  A.cargosFichaHTML = function (db, id) {
+    var l = A.cargosDePersona(db, id);
+    if (!l.length) return '';
+    return '<fieldset><legend>Cargos desempeñados</legend><div class="tabla-envoltorio"><table><thead><tr><th>Cargo</th><th>Periodo</th><th>Tiempo</th></tr></thead><tbody>' +
+      l.map(function (n) { return '<tr><td>' + A.esc(n.cargo) + (n.hasta ? '' : ' ' + A.etiquetaEstado('en el cargo', 'ok')) + '</td><td>' + A.periodoTexto(n) + '</td><td>' + anios(n) + '</td></tr>'; }).join('') +
+      '</tbody></table></div><button type="button" class="mini" data-cert-cargos="' + id + '">' + A.icono('imprimir') + ' Certificado de cargos</button></fieldset>';
+  };
+})(A);
+
 /* Alcancía · arranque, estructura de la aplicación y bloqueo automático */
 'use strict';
 (function (A) {
-  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'], ['actividades', 'Actividades', 'calendario'], ['enseres', null, 'percha'], ['donativos', 'Donativos', 'corazon'], ['tesoreria', 'Tesorería', 'cartera'],
+  var MENU = [['panel', 'Panel', 'panel'], ['miembros', null, 'personas'], ['junta', 'Junta y cargos', 'medalla'], ['cuotas', 'Cuotas', 'euro'], ['remesas', 'Remesas', 'banco'], ['salidas', 'Salidas', 'vela'], ['actividades', 'Actividades', 'calendario'], ['enseres', null, 'percha'], ['donativos', 'Donativos', 'corazon'], ['tesoreria', 'Tesorería', 'cartera'],
     ['comunicaciones', 'Comunicaciones', 'correo'], ['listados', 'Listados', 'imprimir'], ['rgpd', 'Protección de datos', 'escudo'],
     ['datos', 'Datos y copias', 'disco'], ['configuracion', 'Configuración', 'ajustes'], ['ayuda', 'Ayuda', 'ayuda']];
 

@@ -37,6 +37,7 @@ Funciona en el navegador (Chrome o Edge), también sin conexión, y no tiene ser
 | **Cuotas y remesas SEPA** | Cuotas anuales, trimestrales o mensuales y el fichero de adeudos directos (pain.008) para subirlo a la banca en línea, con las cuentas comprobadas antes. |
 | **Actividades y lotería** | Excursiones, comidas, campamentos o cursos con sus precios, plazas, inscripciones y pagos a plazos. Talonarios de lotería de Navidad y su liquidación. |
 | **Material prestado** | Inventario de túnicas, equipaciones o material, préstamos con fianza y recibo para firmar, y aviso de lo que no se ha devuelto. |
+| **Junta y cargos** | La junta actual y quién ocupó cada cargo en cualquier época, renovaciones tras las elecciones, aviso de fin de mandato y certificados de composición. |
 | **Tesorería** | Libro de caja de banco y caja con los cobros ya apuntados, gastos por partidas, comprobación con el extracto, presupuesto y estado de cuentas para la asamblea. |
 | **Donativos y modelo 182** | Para entidades acogidas a la Ley 49/2002: certificados de donativos y fichero del modelo 182 para la Agencia Tributaria. |
 | **Protección de datos** | Cláusula informativa y registro de actividades generados con vuestros datos, derechos de acceso y supresión, plazos de conservación y un kit de plantillas. |
@@ -46,6 +47,7 @@ Funciona en el navegador (Chrome o Edge), también sin conexión, y no tiene ser
 
 - **Salidas y tarjetas de sitio** con su precio, independiente de la cuota; reparto y cobro, listados de pagadas por tipo y tarjetas para imprimir.
 - **Cortejo por tramos**: hermanos colocados por antigüedad y por parejas, insignias y diputados, y hojas para pasar lista.
+- **Hermanos mayores y juntas de gobierno** de todas las épocas, con la junta vigente en cualquier fecha.
 - **Cofrades activos y asociados** (por ejemplo, en la Archidiócesis de Granada), con su historial y el censo de votantes del cabildo.
 - Número de hermano por antigüedad, túnicas y enseres prestados, lotería, comidas de hermandad y cuentas para el cabildo.
 

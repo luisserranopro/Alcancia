@@ -1,11 +1,11 @@
 {
- "version": "0.6.0",
+ "version": "0.6.1",
  "fecha": "2026-11-03",
  "novedades": [
-  "Tesorería: libro de caja con los cobros ya apuntados, gastos por partidas y traspasos",
-  "Presupuesto y estado de cuentas para la asamblea, en papel y en Excel",
-  "Comprobar el saldo con el extracto del banco o el dinero de la caja",
-  "Primeros pasos en el panel para empezar con buen pie"
+  "Junta y cargos: la junta actual y quién ocupó cada cargo en cualquier época",
+  "Renovación de la junta tras las elecciones y aviso de fin de mandato",
+  "Certificados de composición de la junta y de cargos desempeñados",
+  "Cargos desempeñados en la ficha de cada persona"
  ],
  "descarga": "https://github.com/luisserranopro/Alcancia/releases/latest/download/alcancia.html"
 }
