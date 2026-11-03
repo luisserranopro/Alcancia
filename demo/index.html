@@ -178,6 +178,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   #imprimir h1 { font-size: 16pt; } #imprimir table { font-size: 9.5pt; } #imprimir th { background: #eee; position: static; }
   #imprimir th, #imprimir td { border: 1px solid #999; padding: 4px 6px; }
   .salto { page-break-after: always; }
+  .hoja-tramo { break-after: page; } .hoja-tramo:last-of-type { break-after: auto; } .bloque-tramo { break-inside: avoid-page; }
   .certificado { break-after: page; font-size: 11pt; line-height: 1.55; }
   .certificado:last-of-type { break-after: auto; }
   .certificado h2 { font-size: 14pt; margin: 0 0 6mm; }
@@ -242,6 +243,11 @@ select, input, textarea { max-width: 100%; }
 #imprimir .carne-cab { display: flex; align-items: center; }
 #imprimir .ts-ent { display: flex; align-items: center; }
 @media (max-width: 860px) { .cabecera .entidad { display: none; } }
+.campo.sin-etiqueta { margin: 0; } .campo.sin-etiqueta label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.campo.sin-etiqueta .error-campo { display: none; }
+.tramo .titulo-tramo { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 10px; }
+.tramo .titulo-tramo > div:first-child { min-width: 0; }
+.tramo h2 { margin-bottom: 2px; } .tramo .titulo-tramo p { margin: 0; }
 </style>
 </head>
 <body>
@@ -259,7 +265,7 @@ if (typeof location !== 'undefined' && location.protocol === 'http:' && !/^(loca
   location.replace('https:' + location.href.slice(5));
 }
 A.puedeCifrar = function () { var c = (typeof globalThis !== 'undefined' && globalThis.crypto) || (typeof window !== 'undefined' && window.crypto); return !!(c && c.subtle); };
-A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.4.1', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
+A.APP = { nombre: 'Alcancía', dominio: 'alcancia.work', version: '0.5.0', formato: 'alcancia-v2', extension: '.alcancia', extensionesAntiguas: ['.asociapp', '.asocia'] };
 
 A.esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -891,36 +897,266 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return '﻿' + [cabeceras].concat(filas).map(function (f) { return f.map(c).join(sep); }).join('\r\n');
   };
 
-  /* Sinónimos de cabeceras para importar desde hojas de cálculo existentes */
-  A.SINONIMOS = {
-    numero: ['numero', 'n', 'nº', 'num', 'numero socio', 'n socio', 'numero hermano', 'codigo'],
-    nombre: ['nombre'],
-    apellidos: ['apellidos', 'apellido', 'apellido 1', 'primer apellido'],
-    nombreCompleto: ['nombre completo', 'nombre y apellidos', 'socio', 'hermano', 'miembro'],
-    documento: ['dni', 'nif', 'nie', 'documento', 'dni/nie'],
-    fechaNacimiento: ['fecha nacimiento', 'fecha de nacimiento', 'nacimiento', 'f nacimiento'],
-    fechaAlta: ['fecha alta', 'fecha de alta', 'alta', 'antiguedad', 'fecha ingreso', 'ingreso'],
-    email: ['email', 'e-mail', 'correo', 'correo electronico', 'mail'],
-    telefono: ['telefono', 'movil', 'tlf', 'telf', 'tel'],
-    direccion: ['direccion', 'domicilio', 'calle'],
-    codigoPostal: ['cp', 'codigo postal'],
-    localidad: ['localidad', 'poblacion', 'municipio', 'ciudad'],
-    iban: ['iban', 'cuenta', 'cuenta bancaria', 'n cuenta', 'ccc'],
-    titular: ['titular', 'titular cuenta', 'titular de la cuenta'],
-    tutor: ['tutor', 'tutor legal', 'padre/madre', 'representante'],
-    observaciones: ['observaciones', 'notas', 'comentarios'],
-    extra: ['categoria', 'equipo', 'curso', 'alumnos', 'hijos', 'grupo'],
-  };
+  /* Campos que se pueden importar, en el orden en que se ofrecen */
+  A.CAMPOS_IMPORT = [['numero', 'Número'], ['nombre', 'Nombre'], ['apellidos', 'Apellidos (los dos)'], ['apellido1', 'Primer apellido'], ['apellido2', 'Segundo apellido'],
+    ['nombreCompleto', 'Nombre y apellidos juntos'], ['documento', 'DNI/NIE'], ['fechaNacimiento', 'Fecha de nacimiento'], ['fechaAlta', 'Fecha de alta'],
+    ['email', 'Email'], ['telefono', 'Teléfono'], ['direccion', 'Dirección'], ['codigoPostal', 'Código postal'], ['localidad', 'Localidad'],
+    ['iban', 'Cuenta bancaria (IBAN o 20 dígitos)'], ['titular', 'Titular de la cuenta'], ['mandato', 'Referencia del mandato'], ['fechaMandato', 'Fecha del mandato'],
+    ['formaPago', 'Forma de pago'], ['tutor', 'Persona tutora'], ['tutorDocumento', 'DNI de la persona tutora'], ['extra', 'Campo propio (grupo, curso, categoría…)'],
+    ['estado', 'Alta o baja'], ['fechaBaja', 'Fecha de baja'], ['observaciones', 'Observaciones']];
 
+  /* Sinónimos de cabeceras (ya normalizadas: minúsculas, sin tildes ni signos) */
+  A.SINONIMOS = {
+    numero: ['numero', 'n', 'no', 'num', 'numero socio', 'n socio', 'no socio', 'num socio', 'numero de socio', 'n de socio', 'numero hermano', 'n hermano', 'no hermano', 'numero de hermano',
+      'n de hermano', 'n hno', 'no hno', 'num hno', 'hno', 'codigo', 'cod', 'id', 'expediente', 'n ficha', 'numero ficha', 'ficha', 'n licencia', 'licencia', 'orden'],
+    nombre: ['nombre', 'nombre pila', 'nombres', 'name'],
+    apellidos: ['apellidos', 'apellidos completos', 'surname'],
+    apellido1: ['apellido', 'apellido 1', 'apellido1', 'primer apellido', '1 apellido', '1er apellido', 'ap1', 'apel 1', 'apellido primero'],
+    apellido2: ['apellido 2', 'apellido2', 'segundo apellido', '2 apellido', '2o apellido', 'ap2', 'apel 2', 'apellido segundo'],
+    nombreCompleto: ['nombre completo', 'nombre y apellidos', 'apellidos y nombre', 'apellidos nombre', 'socio', 'socia', 'hermano', 'hermana', 'hermano a', 'miembro', 'deportista', 'jugador', 'familia', 'alumno'],
+    documento: ['dni', 'nif', 'nie', 'documento', 'dni nie', 'dni nif', 'nif dni', 'd n i', 'n i f', 'documento identidad', 'documento de identidad', 'n documento', 'numero documento', 'dni socio', 'dni hermano', 'cif'],
+    fechaNacimiento: ['fecha nacimiento', 'fecha de nacimiento', 'nacimiento', 'f nacimiento', 'f nac', 'fec nac', 'fecha nac', 'nacido', 'cumpleanos'],
+    fechaAlta: ['fecha alta', 'fecha de alta', 'alta', 'antiguedad', 'fecha antiguedad', 'fecha ingreso', 'fecha de ingreso', 'ingreso', 'f alta', 'fec alta', 'fecha inscripcion', 'inscripcion', 'desde', 'socio desde', 'hermano desde'],
+    email: ['email', 'e mail', 'correo', 'correo electronico', 'mail', 'correo e', 'email 1', 'emails'],
+    telefono: ['telefono', 'movil', 'tlf', 'telf', 'tel', 'tfno', 'tlfno', 'telefono movil', 'telefono 1', 'celular', 'contacto', 'whatsapp'],
+    direccion: ['direccion', 'domicilio', 'calle', 'direccion postal', 'domicilio postal'],
+    codigoPostal: ['cp', 'c p', 'codigo postal', 'cod postal', 'postal'],
+    localidad: ['localidad', 'poblacion', 'municipio', 'ciudad', 'pueblo'],
+    iban: ['iban', 'cuenta', 'cuenta bancaria', 'n cuenta', 'numero cuenta', 'numero de cuenta', 'n de cuenta', 'ccc', 'c c c', 'cta', 'cta bancaria', 'cuenta corriente', 'iban ccc', 'cuenta domiciliacion', 'domiciliacion', 'banco'],
+    titular: ['titular', 'titular cuenta', 'titular de la cuenta', 'titular cta'],
+    mandato: ['mandato', 'referencia mandato', 'ref mandato', 'referencia del mandato'],
+    fechaMandato: ['fecha mandato', 'fecha del mandato', 'fecha firma mandato', 'fecha de firma'],
+    formaPago: ['forma pago', 'forma de pago', 'pago', 'modo pago', 'modo de pago', 'tipo pago'],
+    tutor: ['tutor', 'tutora', 'tutor a', 'tutor legal', 'padre madre', 'padre', 'madre', 'representante', 'responsable', 'persona tutora'],
+    tutorDocumento: ['dni tutor', 'dni del tutor', 'dni padre', 'dni madre', 'dni padre madre', 'nif tutor', 'dni representante', 'dni responsable'],
+    estado: ['estado', 'situacion', 'alta baja', 'activo'],
+    fechaBaja: ['fecha baja', 'fecha de baja', 'baja', 'f baja'],
+    observaciones: ['observaciones', 'notas', 'comentarios', 'obs', 'nota'],
+    extra: ['categoria', 'equipo', 'curso', 'alumnos', 'hijos', 'hijos as', 'grupo', 'seccion', 'cargo', 'paso', 'cuadrilla', 'clase'],
+  };
+  A.normalizaCabecera = function (h) { return A.normaliza(h).replace(/[º°ª]/g, 'o').replace(/[^a-z0-9ñ]+/g, ' ').trim(); };
+
+  /* Empareja cada columna con un campo: primero por sinónimo exacto, después por palabras clave */
   A.mapeaCabeceras = function (cabeceras) {
-    var mapa = {};
-    cabeceras.forEach(function (h, i) {
-      var n = A.normaliza(h).replace(/[._]/g, ' ').replace(/\s+/g, ' ');
-      Object.keys(A.SINONIMOS).forEach(function (campo) {
-        if (mapa[campo] === undefined && A.SINONIMOS[campo].indexOf(n) >= 0) mapa[campo] = i;
+    var mapa = {}, usadas = {};
+    var n = cabeceras.map(A.normalizaCabecera);
+    n.forEach(function (h, i) {
+      Object.keys(A.SINONIMOS).some(function (campo) {
+        if (mapa[campo] === undefined && A.SINONIMOS[campo].indexOf(h) >= 0) { mapa[campo] = i; usadas[i] = 1; return true; }
       });
     });
+    var reglas = [['documento', /\b(dni|nif|nie)\b/], ['fechaNacimiento', /nac/], ['fechaAlta', /\b(alta|ingreso|antiguedad)\b/], ['email', /mail|correo/], ['telefono', /tel|movil|tfno/],
+      ['iban', /iban|cuenta|\bcta\b|ccc/], ['codigoPostal', /postal|\bcp\b/], ['apellido2', /2.*apell|apell.*2|segundo/], ['apellido1', /apell/], ['numero', /\b(n|no|num|numero)\b/], ['nombre', /nombre/]];
+    n.forEach(function (h, i) {
+      if (usadas[i] || !h) return;
+      reglas.some(function (r) { if (mapa[r[0]] === undefined && r[1].test(h)) { mapa[r[0]] = i; usadas[i] = 1; return true; } });
+    });
+    if (mapa.nombre !== undefined && mapa.nombreCompleto !== undefined) delete mapa.nombreCompleto;
+    if (mapa.apellidos !== undefined) { delete mapa.apellido1; delete mapa.apellido2; }
     return mapa;
+  };
+
+  /* Busca la fila de títulos entre las 10 primeras: la que más columnas reconoce */
+  A.filaCabecera = function (filas) {
+    var mejor = 0, puntos = -1;
+    filas.slice(0, 12).forEach(function (f, i) { var k = Object.keys(A.mapeaCabeceras(f)).length; if (k > puntos) { puntos = k; mejor = i; } });
+    return mejor;
+  };
+})(A);
+
+/* Alcancía · hojas de cálculo sin dependencias: leer Excel (.xlsx), LibreOffice (.ods) y CSV, y escribir .xlsx
+   Un .xlsx o un .ods es un ZIP con ficheros XML dentro. Se descomprime con DecompressionStream («deflate-raw»). */
+'use strict';
+(function (A) {
+  /* ---------- ZIP ---------- */
+  function u16(b, i) { return b[i] | (b[i + 1] << 8); }
+  function u32(b, i) { return (b[i] | (b[i + 1] << 8) | (b[i + 2] << 16) | (b[i + 3] << 24)) >>> 0; }
+  async function inflar(datos) {
+    if (typeof DecompressionStream !== 'function') throw new Error('Este navegador no puede abrir ficheros de Excel. Actualízalo o guarda la hoja como CSV.');
+    var flujo = new Blob([datos]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(flujo).arrayBuffer());
+  }
+  /* Devuelve { nombre: Uint8Array } con los ficheros pedidos (o todos) */
+  A.leerZip = async function (b, quiero) {
+    var fin = -1;
+    for (var i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) if (u32(b, i) === 0x06054b50) { fin = i; break; }
+    if (fin < 0) throw new Error('El fichero no es un ZIP válido.');
+    var n = u16(b, fin + 10), p = u32(b, fin + 16), out = {}, dec = new TextDecoder();
+    for (var k = 0; k < n; k++) {
+      if (u32(b, p) !== 0x02014b50) throw new Error('El fichero está dañado.');
+      var metodo = u16(b, p + 10), comp = u32(b, p + 20), lnom = u16(b, p + 28), lext = u16(b, p + 30), lcom = u16(b, p + 32), local = u32(b, p + 42);
+      var nombre = dec.decode(b.subarray(p + 46, p + 46 + lnom));
+      p += 46 + lnom + lext + lcom;
+      if (quiero && !quiero(nombre)) continue;
+      var ini = local + 30 + u16(b, local + 26) + u16(b, local + 28), datos = b.subarray(ini, ini + comp);
+      out[nombre] = metodo === 0 ? datos : metodo === 8 ? await inflar(datos) : null;
+    }
+    return out;
+  };
+
+  var CRC = (function () { var t = new Uint32Array(256); for (var n = 0; n < 256; n++) { var c = n; for (var k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(b) { var c = 0xFFFFFFFF; for (var i = 0; i < b.length; i++) c = CRC[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  /* ZIP sin compresión (método «stored»): suficiente y compatible con Excel, LibreOffice y Google Sheets */
+  A.crearZip = function (ficheros) {
+    var enc = new TextEncoder(), partes = [], central = [], off = 0;
+    function cab(n) { return new Uint8Array(n); }
+    Object.keys(ficheros).forEach(function (nombre) {
+      var d = typeof ficheros[nombre] === 'string' ? enc.encode(ficheros[nombre]) : ficheros[nombre], nb = enc.encode(nombre), c = crc32(d);
+      var l = cab(30), v = new DataView(l.buffer);
+      v.setUint32(0, 0x04034b50, true); v.setUint16(4, 20, true); v.setUint16(6, 0x0800, true); v.setUint16(8, 0, true);
+      v.setUint32(14, c, true); v.setUint32(18, d.length, true); v.setUint32(22, d.length, true); v.setUint16(26, nb.length, true);
+      var e = cab(46), w = new DataView(e.buffer);
+      w.setUint32(0, 0x02014b50, true); w.setUint16(4, 20, true); w.setUint16(6, 20, true); w.setUint16(8, 0x0800, true);
+      w.setUint32(16, c, true); w.setUint32(20, d.length, true); w.setUint32(24, d.length, true); w.setUint16(28, nb.length, true); w.setUint32(42, off, true);
+      partes.push(l, nb, d); central.push(e, nb); off += 30 + nb.length + d.length;
+    });
+    var tam = central.reduce(function (s, x) { return s + x.length; }, 0), f = cab(22), z = new DataView(f.buffer), n = Object.keys(ficheros).length;
+    z.setUint32(0, 0x06054b50, true); z.setUint16(8, n, true); z.setUint16(10, n, true); z.setUint32(12, tam, true); z.setUint32(16, off, true);
+    var todo = partes.concat(central, [f]), total = todo.reduce(function (s, x) { return s + x.length; }, 0), r = new Uint8Array(total), q = 0;
+    todo.forEach(function (x) { r.set(x, q); q += x.length; });
+    return r;
+  };
+
+  /* ---------- XML mínimo ---------- */
+  function ent(s) {
+    return String(s).replace(/&#x([0-9a-f]+);/gi, function (_, h) { return String.fromCodePoint(parseInt(h, 16)); }).replace(/&#(\d+);/g, function (_, d) { return String.fromCodePoint(+d); })
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  }
+  function attr(tag, n) { var m = tag.match(new RegExp('\\s' + n.replace(':', '\\:') + '="([^"]*)"')); return m ? ent(m[1]) : null; }
+  function textos(xml) { var r = '', re = /<(?:\w+:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:\w+:)?t>/g, m; while ((m = re.exec(xml))) r += ent(m[1]); return r; }
+  function col(ref) { var m = /^([A-Z]+)/.exec(ref || ''), n = 0; if (!m) return -1; for (var i = 0; i < m[1].length; i++) n = n * 26 + m[1].charCodeAt(i) - 64; return n - 1; }
+
+  /* Fecha de Excel (número de serie) → AAAA-MM-DD */
+  A.fechaExcel = function (serie) {
+    var d = new Date(Date.UTC(1899, 11, 30) + Math.floor(+serie) * 86400000);
+    return d.toISOString().slice(0, 10);
+  };
+
+  /* ---------- .xlsx ---------- */
+  A.leerXLSX = async function (bytes) {
+    var z = await A.leerZip(bytes, function (n) { return /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|styles\.xml|worksheets\/[^/]+\.xml)$/.test(n); });
+    var dec = new TextDecoder(), txt = function (n) { return z[n] ? dec.decode(z[n]) : ''; };
+    var compartidas = [], re = /<si>([\s\S]*?)<\/si>/g, m;
+    var ss = txt('xl/sharedStrings.xml'); while ((m = re.exec(ss))) compartidas.push(textos(m[1]));
+    // estilos de fecha: numFmt 14-22, 45-47 y formatos propios con d, m, y
+    var est = txt('xl/styles.xml'), propios = {}, esFecha = [];
+    (est.match(/<numFmt\s[^>]*>/g) || []).forEach(function (t) { propios[attr(t, 'numFmtId')] = /[dmy]/i.test((attr(t, 'formatCode') || '').replace(/"[^"]*"|\[[^\]]*\]/g, '')); });
+    var xfs = (est.match(/<cellXfs[\s\S]*?<\/cellXfs>/) || [''])[0];
+    (xfs.match(/<xf\s[^>]*>/g) || []).forEach(function (t) { var id = +attr(t, 'numFmtId'); esFecha.push((id >= 14 && id <= 22) || (id >= 45 && id <= 47) || !!propios[id]); });
+    var rels = {}; (txt('xl/_rels/workbook.xml.rels').match(/<Relationship\s[^>]*>/g) || []).forEach(function (t) { rels[attr(t, 'Id')] = attr(t, 'Target'); });
+    var hojas = [];
+    (txt('xl/workbook.xml').match(/<sheet\s[^>]*>/g) || []).forEach(function (t) {
+      var destino = rels[attr(t, 'r:id')] || '', ruta = 'xl/' + destino.replace(/^\/?xl\//, '').replace(/^\//, '');
+      var xml = txt(ruta); if (!xml) return;
+      var filas = [], rr = /<row\b[^>]*>([\s\S]*?)<\/row>|<row\b[^>]*\/>/g, rm;
+      while ((rm = rr.exec(xml))) {
+        var nfila = +attr(' ' + rm[0].slice(4, rm[0].indexOf('>')), 'r');
+        if (nfila > 0) while (filas.length < nfila - 1) filas.push([]);   // respeta las filas vacías intermedias
+        var fila = [], cr = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g, cm, idx = 0;
+        while ((cm = cr.exec(rm[1] || ''))) {
+          var a = ' ' + cm[1], ref = attr(a, 'r'), tipo = attr(a, 't'), s = +attr(a, 's'), dentro = cm[2] || '';
+          var c = ref ? col(ref) : idx; idx = c + 1;
+          var vm = /<v>([\s\S]*?)<\/v>/.exec(dentro), v = vm ? ent(vm[1]) : '';
+          var valor = tipo === 's' ? (compartidas[+v] || '') : tipo === 'inlineStr' ? textos(dentro) : tipo === 'b' ? (v === '1' ? 'Sí' : 'No') : tipo === 'str' || tipo === 'e' ? v :
+            (v !== '' && esFecha[s] ? A.fechaExcel(v) : v);
+          while (fila.length < c) fila.push('');
+          fila[c] = String(valor);
+        }
+        filas.push(fila);
+      }
+      hojas.push({ nombre: attr(t, 'name') || 'Hoja', filas: limpiar(filas) });
+    });
+    if (!hojas.length) throw new Error('No encuentro ninguna hoja en el fichero de Excel.');
+    return hojas;
+  };
+
+  /* ---------- .ods ---------- */
+  A.leerODS = async function (bytes) {
+    var z = await A.leerZip(bytes, function (n) { return n === 'content.xml'; });
+    if (!z['content.xml']) throw new Error('El fichero no es una hoja de LibreOffice válida.');
+    var xml = new TextDecoder().decode(z['content.xml']), hojas = [], tr = /<table:table\b([^>]*)>([\s\S]*?)<\/table:table>/g, tm;
+    while ((tm = tr.exec(xml))) {
+      var filas = [], rr = /<table:table-row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/table:table-row>)/g, rm;
+      while ((rm = rr.exec(tm[2]))) {
+        var fila = [], cr = /<table:(?:covered-)?table-cell\b([^>]*?)(?:\/>|>([\s\S]*?)<\/table:(?:covered-)?table-cell>)/g, cm;
+        while ((cm = cr.exec(rm[2] || ''))) {
+          var a = ' ' + cm[1], rep = Math.min(+attr(a, 'table:number-columns-repeated') || 1, 200), tipo = attr(a, 'office:value-type');
+          var v = tipo === 'date' ? (attr(a, 'office:date-value') || '').slice(0, 10) : tipo === 'float' || tipo === 'percentage' || tipo === 'currency' ? attr(a, 'office:value') :
+            (cm[2] || '').split(/<\/text:p>/).map(function (p) { return ent(p.replace(/<text:s(?:\s[^>]*)?\/>/g, ' ').replace(/<[^>]+>/g, '')); }).filter(Boolean).join('\n');
+          for (var k = 0; k < rep; k++) fila.push(v || '');
+        }
+        var rep2 = Math.min(+attr(' ' + rm[1], 'table:number-rows-repeated') || 1, 5);
+        for (var j = 0; j < rep2; j++) filas.push(fila.slice());
+      }
+      hojas.push({ nombre: attr(' ' + tm[1], 'table:name') || 'Hoja', filas: limpiar(filas) });
+    }
+    if (!hojas.length) throw new Error('No encuentro ninguna hoja en el fichero.');
+    return hojas;
+  };
+
+  /* Quita las filas vacías del final y las columnas vacías de la derecha (las intermedias se conservan para que el número de fila coincida) */
+  function limpiar(filas) {
+    filas = filas.map(function (f) { var g = f.slice(); while (g.length && String(g[g.length - 1]).trim() === '') g.pop(); return g; });
+    while (filas.length && !filas[filas.length - 1].length) filas.pop();
+    var ancho = filas.reduce(function (m, f) { return Math.max(m, f.length); }, 0);
+    return filas.map(function (f) { while (f.length < ancho) f.push(''); return f; });
+  }
+
+  /* CSV: UTF-8 y, si no lo es, el formato antiguo de Windows (Excel en español guarda así los CSV) */
+  A.textoCSV = function (bytes) {
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch (e) { return new TextDecoder('windows-1252').decode(bytes); }
+  };
+
+  /* Lee cualquier hoja admitida: devuelve [{ nombre, filas }] */
+  A.leerHojaCalculo = async function (bytes, nombre) {
+    bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    var ext = String(nombre || '').toLowerCase().split('.').pop();
+    if (ext === 'xls') throw new Error('Los ficheros .xls antiguos no se pueden leer. En Excel, usa «Guardar como» y elige «Libro de Excel (.xlsx)» o «CSV».');
+    if (bytes[0] === 0x50 && bytes[1] === 0x4B) {
+      var z = await A.leerZip(bytes, function (n) { return n === 'xl/workbook.xml' || n === 'content.xml'; });
+      if (z['xl/workbook.xml']) return A.leerXLSX(bytes);
+      if (z['content.xml']) return A.leerODS(bytes);
+      throw new Error('El fichero no es una hoja de cálculo que se pueda leer.');
+    }
+    return [{ nombre: nombre || 'CSV', filas: limpiar(A.parseCSV(A.textoCSV(bytes))) }];
+  };
+
+  /* ---------- escribir .xlsx ---------- */
+  function x(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ''); }
+  function letra(n) { var s = ''; n++; while (n) { var r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; }
+  /* hojas: [{ nombre, filas: [[...]] }] (la primera fila son los títulos). Los números se guardan como número. */
+  A.crearXLSX = function (hojas) {
+    var f = { '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      hojas.map(function (h, i) { return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'; }).join('') + '</Types>',
+      '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+      'xl/workbook.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+        hojas.map(function (h, i) { return '<sheet name="' + x(String(h.nombre).replace(/[\\\/?*\[\]:]/g, ' ').slice(0, 31)) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') + '</sheets></workbook>',
+      'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        hojas.map(function (h, i) { return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>'; }).join('') +
+        '<Relationship Id="rId' + (hojas.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+      'xl/styles.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>' +
+        '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF2E6DF"/></patternFill></fill></fills>' +
+        '<borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs>' +
+        '<cellXfs count="2"><xf fontId="0" fillId="0" borderId="0"/><xf fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>' };
+    hojas.forEach(function (h, i) {
+      var anchos = [];
+      h.filas.forEach(function (fila) { fila.forEach(function (v, c) { anchos[c] = Math.min(60, Math.max(anchos[c] || 8, String(v == null ? '' : v).length + 2)); }); });
+      f['xl/worksheets/sheet' + (i + 1) + '.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>' +
+        (anchos.length ? '<cols>' + anchos.map(function (w, c) { return '<col min="' + (c + 1) + '" max="' + (c + 1) + '" width="' + w + '" customWidth="1"/>'; }).join('') + '</cols>' : '') + '<sheetData>' +
+        h.filas.map(function (fila, r) {
+          return '<row r="' + (r + 1) + '">' + fila.map(function (v, c) {
+            if (v == null || v === '') return '';
+            var ref = letra(c) + (r + 1), st = r === 0 ? ' s="1"' : '';
+            return typeof v === 'number' && isFinite(v) ? '<c r="' + ref + '"' + st + '><v>' + v + '</v></c>' : '<c r="' + ref + '"' + st + ' t="inlineStr"><is><t xml:space="preserve">' + x(v) + '</t></is></c>';
+          }).join('') + '</row>';
+        }).join('') + '</sheetData></worksheet>';
+    });
+    return A.crearZip(f);
   };
 })(A);
 
@@ -1035,7 +1271,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     return { errores: errores, avisos: avisos };
   };
 
-  A.guardaMiembro = function (db, m) {
+  A.guardaMiembro = function (db, m, op) {
+    var callado = op && op.silencioso;
     var r = A.revisaMiembro(db, m);
     if (r.errores.length) throw new Error(r.errores.join('\n'));
     if (m.iban) m.iban = A.limpiaIBAN(m.iban);
@@ -1043,12 +1280,12 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (m.formaPago === 'domiciliacion' && !m.mandato) m.mandato = A.mandatoPorDefecto(db, m);
     m.modificado = new Date().toISOString();
     var i = db.miembros.findIndex(function (o) { return o.id === m.id; });
-    if (i >= 0) { db.miembros[i] = m; A.log(db, 'Modificado ' + A.vocab(db).miembro + ' nº ' + m.numero); }
+    if (i >= 0) { db.miembros[i] = m; if (!callado) A.log(db, 'Modificado ' + A.vocab(db).miembro + ' nº ' + m.numero); }
     else {
       m.creado = m.modificado;
       if (!m.condicion) m.condicion = 'activo';
       if (!Array.isArray(m.historialCondicion) || !m.historialCondicion.length) m.historialCondicion = [{ fecha: m.fechaAlta, condicion: m.condicion, motivo: 'Alta' }];
-      db.miembros.push(m); A.log(db, 'Alta de ' + A.vocab(db).miembro + ' nº ' + m.numero);
+      db.miembros.push(m); if (!callado) A.log(db, 'Alta de ' + A.vocab(db).miembro + ' nº ' + m.numero);
     }
     return r.avisos;
   };
@@ -1230,35 +1467,163 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 
   /* ---------- importación ---------- */
-  A.importarFilas = function (db, filas, mapa, opciones) {
+  function valorFecha(v) {
+    v = String(v || '').trim();
+    if (/^\d{4,5}(\.\d+)?$/.test(v) && +v > 3000 && +v < 80000) return A.fechaExcel(v);   // número de serie de Excel
+    return A.parseFecha(v.replace(/[ T]\d{1,2}:\d{2}(:\d{2})?.*$/, ''));
+  }
+  function formaPagoDe(v) {
+    v = A.normaliza(v);
+    if (!v) return '';
+    if (/domic|banco|recibo|sepa|cargo/.test(v)) return 'domiciliacion';
+    if (/transf/.test(v)) return 'transferencia';
+    if (/bizum/.test(v)) return 'bizum';
+    if (/efect|metal|caja|mano/.test(v)) return 'efectivo';
+    return '';
+  }
+  function estadoDe(v) { v = A.normaliza(v); return !v ? '' : /baja|no activo|inactiv|^no$|^n$|fallec/.test(v) ? 'baja' : 'alta'; }
+
+  /* Convierte una fila en un miembro (sin guardarlo) */
+  A.miembroDeFila = function (db, f, mapa, opciones) {
     opciones = opciones || {};
-    var importados = 0, errores = [];
-    filas.forEach(function (f, i) {
-      var g = function (campo) { return mapa[campo] !== undefined ? String(f[mapa[campo]] || '').trim() : ''; };
-      var m = A.miembroVacio(db);
-      if (g('nombreCompleto') && !g('nombre')) {
-        var t = g('nombreCompleto');
-        if (t.indexOf(',') > 0) { m.apellidos = t.split(',')[0].trim(); m.nombre = t.split(',').slice(1).join(',').trim(); }
-        else { var p = t.split(/\s+/); m.nombre = p.shift(); m.apellidos = p.join(' '); }
-      } else { m.nombre = g('nombre'); m.apellidos = g('apellidos'); }
-      if (g('numero') && /^\d+$/.test(g('numero'))) m.numero = +g('numero');
-      m.documento = A.limpiaDoc(g('documento'));
-      m.fechaNacimiento = A.parseFecha(g('fechaNacimiento'));
-      m.fechaAlta = A.parseFecha(g('fechaAlta')) || opciones.fechaAltaPorDefecto || A.hoyISO();
-      m.email = g('email'); m.telefono = g('telefono'); m.direccion = g('direccion'); m.cp = g('codigoPostal'); m.localidad = g('localidad');
-      var cuenta = g('iban').replace(/\s/g, '');
-      if (/^\d{20}$/.test(cuenta)) cuenta = A.ibanDesdeCCC(cuenta);
-      m.iban = A.limpiaIBAN(cuenta);
-      m.titular = g('titular'); m.tutor = g('tutor'); m.extra = g('extra'); m.observaciones = g('observaciones');
-      m.formaPago = m.iban ? 'domiciliacion' : (opciones.formaPagoSinIBAN || 'efectivo');
-      if (m.formaPago === 'domiciliacion') { m.fechaMandato = opciones.fechaMandatoPorDefecto || ''; }
-      if (opciones.tipoCuotaId) m.tipoCuotaId = opciones.tipoCuotaId;
-      if (!m.nombre) { errores.push('Fila ' + (i + 2) + ': sin nombre, no se importa.'); return; }
-      if (db.miembros.some(function (o) { return String(o.numero) === String(m.numero); })) m.numero = A.siguienteNumero(db);
-      try { A.guardaMiembro(db, m); importados++; } catch (e) { errores.push('Fila ' + (i + 2) + ': ' + e.message); }
+    var g = function (campo) { return mapa[campo] !== undefined && mapa[campo] !== '' ? String(f[mapa[campo]] == null ? '' : f[mapa[campo]]).trim() : ''; };
+    var m = A.miembroVacio(db);
+    if (g('nombreCompleto') && !g('nombre')) {
+      var t = g('nombreCompleto');
+      if (t.indexOf(',') > 0) { m.apellidos = t.split(',')[0].trim(); m.nombre = t.split(',').slice(1).join(',').trim(); }
+      else { var p = t.split(/\s+/); if (p.length >= 3 && opciones.apellidosPrimero) { m.apellidos = p.slice(0, 2).join(' '); m.nombre = p.slice(2).join(' '); } else { m.nombre = p.shift(); m.apellidos = p.join(' '); } }
+    } else { m.nombre = g('nombre'); m.apellidos = g('apellidos') || [g('apellido1'), g('apellido2')].filter(Boolean).join(' '); }
+    m.nombre = A.capitalizaNombre(m.nombre); m.apellidos = A.capitalizaNombre(m.apellidos);
+    var num = g('numero').replace(/[^\d]/g, '');
+    m.numero = num ? +num : null;
+    m.documento = A.limpiaDoc(g('documento'));
+    m.fechaNacimiento = valorFecha(g('fechaNacimiento'));
+    m.fechaAlta = valorFecha(g('fechaAlta')) || opciones.fechaAltaPorDefecto || A.hoyISO();
+    m.email = g('email').toLowerCase().replace(/\s/g, ''); m.telefono = g('telefono').replace(/^\+34\s*/, '').replace(/[^\d+]/g, '');
+    m.direccion = g('direccion'); m.cp = g('codigoPostal').replace(/\D/g, ''); if (m.cp && m.cp.length === 4) m.cp = '0' + m.cp; m.localidad = g('localidad');
+    var cuenta = g('iban').replace(/[\s.\-]/g, '').toUpperCase();
+    if (/^\d{20}$/.test(cuenta)) cuenta = A.ibanDesdeCCC(cuenta);
+    m.iban = A.limpiaIBAN(cuenta);
+    m.titular = g('titular'); m.mandato = g('mandato'); m.fechaMandato = valorFecha(g('fechaMandato'));
+    m.tutor = g('tutor'); m.tutorDocumento = A.limpiaDoc(g('tutorDocumento')); m.extra = g('extra'); m.observaciones = g('observaciones');
+    m.formaPago = formaPagoDe(g('formaPago')) || (m.iban ? 'domiciliacion' : (opciones.formaPagoSinIBAN || 'efectivo'));
+    if (m.formaPago === 'domiciliacion' && !m.fechaMandato) m.fechaMandato = opciones.fechaMandatoPorDefecto || '';
+    var est = estadoDe(g('estado')); if (g('fechaBaja') && !est) est = 'baja';
+    if (est) m.estado = est;
+    if (m.estado === 'baja') m.fechaBaja = valorFecha(g('fechaBaja')) || A.hoyISO();
+    if (opciones.tipoCuotaId !== undefined) m.tipoCuotaId = opciones.tipoCuotaId;
+    return m;
+  };
+  /* «GARCIA LOPEZ» o «garcia lopez» → «García López» no es posible sin diccionario: se respeta lo escrito salvo que venga todo en mayúsculas o minúsculas */
+  A.capitalizaNombre = function (s) {
+    s = String(s || '').replace(/\s+/g, ' ').trim();
+    if (!s || (s !== s.toUpperCase() && s !== s.toLowerCase())) return s;
+    return s.toLowerCase().replace(/(^|[\s\-'])(\p{L})/gu, function (_, a, b) { return a + b.toUpperCase(); }).replace(/\b(De|Del|La|Las|Los|Y|E)\b(?!$)/g, function (w, _, i) { return i ? w.toLowerCase() : w; });
+  };
+
+  /* Busca si ya existe: por DNI, o por nombre y apellidos (y fecha de nacimiento si la hay) */
+  function buscaExistente(db, m, ix) {
+    if (m.documento && ix.doc.has(m.documento)) return ix.doc.get(m.documento);
+    var k = A.normaliza(m.nombre + ' ' + m.apellidos);
+    var c = ix.nom.get(k) || [];
+    return c.find(function (o) { return !o.fechaNacimiento || !m.fechaNacimiento || o.fechaNacimiento === m.fechaNacimiento; }) || null;
+  }
+
+  /* Analiza todas las filas antes de importar: qué se crea, qué se actualiza y qué tiene errores */
+  A.prepararImport = function (db, filas, mapa, opciones) {
+    opciones = opciones || {};
+    var ix = { doc: new Map(), nom: new Map() };
+    db.miembros.forEach(function (o) {
+      if (o.documento) ix.doc.set(A.limpiaDoc(o.documento), o);
+      var k = A.normaliza(o.nombre + ' ' + o.apellidos); (ix.nom.get(k) || ix.nom.set(k, []).get(k)).push(o);
     });
-    A.log(db, 'Importación: ' + importados + ' registros');
-    return { importados: importados, errores: errores };
+    var numerosFichero = {}, docsFichero = {}, res = [];
+    filas.forEach(function (f, i) {
+      if (!f.some(function (x) { return String(x == null ? '' : x).trim() !== ''; })) return;   // fila en blanco
+      var m = A.miembroDeFila(db, f, mapa, opciones), r = { fila: i, m: m, accion: 'nuevo', existente: null, errores: [], avisos: [] };
+      if (!m.nombre) { r.errores.push('Sin nombre'); r.accion = 'omitir'; res.push(r); return; }
+      if (mapa.fechaNacimiento !== undefined && String(f[mapa.fechaNacimiento] || '').trim() && !m.fechaNacimiento) r.avisos.push('Fecha de nacimiento no reconocida: «' + f[mapa.fechaNacimiento] + '»');
+      if (mapa.fechaAlta !== undefined && String(f[mapa.fechaAlta] || '').trim() && m.fechaAlta === (opciones.fechaAltaPorDefecto || A.hoyISO())) r.avisos.push('Fecha de alta no reconocida: «' + f[mapa.fechaAlta] + '»');
+      if (m.documento) {
+        if (docsFichero[m.documento] !== undefined) { r.errores.push('DNI repetido en el fichero (fila ' + (docsFichero[m.documento] + (opciones.filaInicial || 2)) + ')'); r.accion = 'omitir'; }
+        docsFichero[m.documento] = i;
+      }
+      var ex = buscaExistente(db, m, ix);
+      if (ex) { r.existente = ex; r.accion = opciones.siExiste === 'omitir' ? 'omitir' : 'actualizar'; if (r.accion === 'omitir') r.avisos.push('Ya existe: no se toca'); }
+      if (m.numero) {
+        if (numerosFichero[m.numero] !== undefined) { r.avisos.push('Número ' + m.numero + ' repetido en el fichero: se le dará otro'); m.numero = null; }
+        else {
+          numerosFichero[m.numero] = i;
+          var otro = A.indice(db).porNumero.get(String(m.numero));
+          if (otro && otro.some(function (o) { return !ex || o.id !== ex.id; }) && r.accion === 'nuevo') { r.avisos.push('El número ' + m.numero + ' ya lo tiene otra persona: se le dará otro'); m.numero = null; }
+        }
+      }
+      if (r.accion !== 'omitir') {
+        var rev = A.revisaMiembro(db, Object.assign({}, m, { numero: m.numero || 0, id: ex ? ex.id : m.id, mandato: m.mandato || (ex && ex.mandato) || 'automático' }));
+        rev.errores.forEach(function (e) { if (!/número/.test(e)) r.errores.push(e); });
+        r.avisos = r.avisos.concat(rev.avisos);
+        if (r.errores.length) r.accion = 'omitir';
+      }
+      res.push(r);
+    });
+    var cuenta = function (a) { return res.filter(function (r) { return r.accion === a; }).length; };
+    return { filas: res, nuevos: cuenta('nuevo'), actualizar: cuenta('actualizar'), omitidas: cuenta('omitir'), conErrores: res.filter(function (r) { return r.errores.length; }).length,
+      conAvisos: res.filter(function (r) { return r.accion !== 'omitir' && r.avisos.length; }).length };
+  };
+
+  /* Aplica el análisis: crea los nuevos y completa o corrige los que ya existen (solo con los datos que trae el fichero) */
+  var CAMPOS_ACTUALIZABLES = ['nombre', 'apellidos', 'documento', 'fechaNacimiento', 'email', 'telefono', 'direccion', 'cp', 'localidad', 'iban', 'titular', 'mandato', 'fechaMandato', 'tutor', 'tutorDocumento', 'extra', 'observaciones'];
+  A.aplicarImport = function (db, analisis, mapa) {
+    var creados = 0, actualizados = 0, errores = [];
+    var traidos = CAMPOS_ACTUALIZABLES.filter(function (c) {
+      var origen = { cp: 'codigoPostal', nombre: 'nombre', apellidos: 'apellidos' }[c] || c;
+      if (c === 'nombre') return mapa.nombre !== undefined || mapa.nombreCompleto !== undefined;
+      if (c === 'apellidos') return mapa.apellidos !== undefined || mapa.apellido1 !== undefined || mapa.nombreCompleto !== undefined;
+      return mapa[origen] !== undefined;
+    });
+    // ya revisado en prepararImport: se guarda directamente (con miles de filas, revisar cada alta otra vez sería muy lento)
+    var pos = new Map(); db.miembros.forEach(function (m, i) { pos.set(m.id, i); });
+    var siguiente = A.siguienteNumero(db), usados = new Set(db.miembros.map(function (m) { return String(m.numero); }));
+    var ahora = new Date().toISOString();
+    function prepara(m) {
+      if (m.iban) m.iban = A.limpiaIBAN(m.iban);
+      if (m.documento) m.documento = A.limpiaDoc(m.documento);
+      if (m.formaPago === 'domiciliacion' && !m.mandato) m.mandato = A.mandatoPorDefecto(db, m);
+      m.modificado = ahora;
+    }
+    analisis.filas.forEach(function (r) {
+      if (r.accion === 'omitir') return;
+      try {
+        if (r.accion === 'nuevo') {
+          var m = r.m;
+          if (!m.numero || usados.has(String(m.numero))) { while (usados.has(String(siguiente))) siguiente++; m.numero = siguiente; }
+          usados.add(String(m.numero)); if (m.numero >= siguiente) siguiente = m.numero + 1;
+          prepara(m); m.creado = ahora; m.condicion = m.condicion || 'activo';
+          m.historialCondicion = [{ fecha: m.fechaAlta, condicion: m.condicion, motivo: 'Alta (importación)' }];
+          pos.set(m.id, db.miembros.length); db.miembros.push(m); creados++;
+          return;
+        }
+        if (r.accion === 'actualizar') {
+          var o = Object.assign({}, r.existente);
+          traidos.forEach(function (c) { if (r.m[c]) o[c] = r.m[c]; });
+          if (mapa.fechaAlta !== undefined && r.m.fechaAlta) o.fechaAlta = r.m.fechaAlta;
+          if (r.m.iban && mapa.iban !== undefined) { o.formaPago = 'domiciliacion'; if (!o.fechaMandato) o.fechaMandato = r.m.fechaMandato; }
+          if (mapa.formaPago !== undefined) o.formaPago = r.m.formaPago;
+          if (mapa.estado !== undefined || mapa.fechaBaja !== undefined) { o.estado = r.m.estado; o.fechaBaja = r.m.fechaBaja; }
+          prepara(o); Object.assign(r.existente, o); actualizados++;   // mismo objeto: los índices siguen valiendo
+        }
+      } catch (e) { errores.push('Fila ' + (r.fila + 2) + ': ' + e.message); }
+    });
+    A.log(db, 'Importación: ' + creados + ' altas y ' + actualizados + ' actualizaciones');
+    return { creados: creados, actualizados: actualizados, errores: errores };
+  };
+
+  /* Compatibilidad: importar directamente sin revisión */
+  A.importarFilas = function (db, filas, mapa, opciones) {
+    var an = A.prepararImport(db, filas, mapa, opciones);
+    var r = A.aplicarImport(db, an, mapa);
+    return { importados: r.creados + r.actualizados, creados: r.creados, actualizados: r.actualizados,
+      errores: an.filas.filter(function (x) { return x.errores.length; }).map(function (x) { return 'Fila ' + (x.fila + 2) + ': ' + x.errores.join(', '); }).concat(r.errores) };
   };
 
   A.COLUMNAS_EXPORT = [
@@ -1266,6 +1631,48 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     ['fechaAlta', 'Fecha alta'], ['estado', 'Estado'], ['fechaBaja', 'Fecha baja'], ['email', 'Email'], ['telefono', 'Teléfono'],
     ['direccion', 'Dirección'], ['cp', 'CP'], ['localidad', 'Localidad'], ['tutor', 'Tutor'], ['formaPago', 'Forma de pago'],
     ['iban', 'IBAN'], ['titular', 'Titular'], ['mandato', 'Mandato'], ['fechaMandato', 'Fecha mandato'], ['extra', 'Extra'], ['observaciones', 'Observaciones'], ['condicion', 'Condición']];
+  /* Tabla de miembros (títulos + filas) para Excel: números como número y fechas legibles */
+  A.tablaMiembros = function (db, lista) {
+    var tipos = {}; db.tiposCuota.forEach(function (t) { tipos[t.id] = t.nombre; });
+    var cab = A.COLUMNAS_EXPORT.map(function (c) { return c[0] === 'extra' ? A.vocab(db).extra : c[1]; }).concat(['Tipo de cuota']);
+    return [cab].concat(A.ordenarPor(lista || db.miembros, 'numero').map(function (m) {
+      return A.COLUMNAS_EXPORT.map(function (c) {
+        var v = m[c[0]];
+        if (/^fecha/.test(c[0])) return v ? A.fechaES(v) : '';
+        if (c[0] === 'numero') return +v || '';
+        if (c[0] === 'formaPago') return A.FORMAS_PAGO[v] || v || '';
+        if (c[0] === 'estado') return v === 'baja' ? 'Baja' : 'Alta';
+        return v == null ? '' : v;
+      }).concat([tipos[m.tipoCuotaId] || '']);
+    }));
+  };
+  /* Libro con todo: para que los datos nunca queden atrapados en el programa */
+  A.libroCompleto = function (db) {
+    var v = A.vocab(db), nom = function (id) { var m = A.miembroPorId(db, id); return m ? [+m.numero || '', A.nombreOrden(m)] : ['', id === 'suprimido' ? 'Datos suprimidos' : '']; };
+    var e = function (c) { return c / 100; };
+    var hojas = [{ nombre: v.Miembros, filas: A.tablaMiembros(db) },
+      { nombre: 'Cuotas', filas: [['Nº', v.Miembro, 'Periodo', 'Concepto', 'Importe (€)', 'Estado', 'Forma de pago', 'Fecha de pago']].concat(db.cargos.map(function (c) {
+        return nom(c.miembroId).concat([c.periodo, c.concepto, e(c.importeCent), A.ESTADOS_CARGO[c.estado] || c.estado, A.FORMAS_PAGO[c.formaPago] || c.formaPago || '', c.fechaPago ? A.fechaES(c.fechaPago) : '']); })) },
+      { nombre: 'Remesas', filas: [['Generada', 'Fecha de cobro', 'Referencia', 'Recibos', 'Total (€)', 'Estado']].concat(db.remesas.map(function (r) {
+        return [A.fechaES(r.fecha), A.fechaES(r.fechaCobro), r.msgId, r.n, e(r.totalCent), r.estado === 'cobrada' ? 'Cobrada' : 'Enviada']; })) }];
+    if (db.tarjetas.length) hojas.push({ nombre: 'Tarjetas de sitio', filas: [['Salida', 'Nº tarjeta', 'Nº', v.Miembro, 'Tipo', 'Puesto', 'Importe (€)', 'Estado', 'Fecha de pago']].concat(db.tarjetas.map(function (t) {
+      var s = db.salidas.find(function (x) { return x.id === t.salidaId; }) || {};
+      return [s.nombre || ''].concat([t.numero], nom(t.miembroId), [t.tipoNombre, t.puesto || '', e(t.importeCent), t.estado, t.fechaPago ? A.fechaES(t.fechaPago) : '']); })) });
+    if (db.inscripciones.length) hojas.push({ nombre: 'Inscripciones', filas: [['Actividad', 'Nº', 'Nombre', 'Detalle', 'Precio', 'Importe (€)', 'Pagado (€)', 'Estado']].concat(db.inscripciones.map(function (x) {
+      var a = A.actividadPorId(db, x.actividadId) || {}, n = x.miembroId ? nom(x.miembroId) : ['', x.nombre];
+      return [a.nombre || ''].concat(n, [x.detalle || '', x.precioNombre || '', e(x.importeCent), e((x.pagos || []).reduce(function (s, p) { return s + p.importeCent; }, 0)), A.ESTADOS_INSCRIPCION[x.estado] || x.estado]); })) });
+    if (db.talonarios.length) hojas.push({ nombre: 'Lotería', filas: [['Actividad', 'Talonario', 'Nº', 'Responsable', 'Participaciones', 'Vendidas', 'Devueltas', 'Liquidado (€)', 'Estado']].concat(db.talonarios.map(function (t) {
+      var a = A.actividadPorId(db, t.actividadId) || {};
+      return [a.nombre || '', t.numero].concat(nom(t.miembroId), [t.participaciones, t.vendidas, t.devueltas, e(t.liquidadoCent), t.estado === 'liquidado' ? 'Liquidado' : 'Por liquidar']); })) });
+    if (db.enseres.length) hojas.push({ nombre: 'Inventario', filas: [['Código', 'Pieza', 'Tipo', 'Talla', 'Ubicación', 'Estado', 'Fianza (€)']].concat(db.enseres.map(function (x) {
+      return [x.codigo, x.nombre, x.tipo, x.talla, x.ubicacion, A.ESTADOS_ENSER[x.estado], e(x.fianzaCent || 0)]; })) });
+    if (db.prestamos.length) hojas.push({ nombre: 'Préstamos', filas: [['Pieza', 'Nº', v.Miembro, 'Prestada', 'Devolver antes de', 'Devuelta', 'Estado al devolver', 'Fianza (€)', 'Fianza']].concat(db.prestamos.map(function (p) {
+      var x = A.enserPorId(db, p.enserId) || {};
+      return [(x.codigo ? x.codigo + ' ' : '') + (x.nombre || '')].concat(nom(p.miembroId), [A.fechaES(p.fechaPrestamo), p.fechaPrevista ? A.fechaES(p.fechaPrevista) : '', p.fechaDevolucion ? A.fechaES(p.fechaDevolucion) : '',
+        p.estadoDevolucion ? A.ESTADOS_DEVOLUCION[p.estadoDevolucion] : '', e(p.fianzaCent || 0), A.ESTADOS_FIANZA[p.fianzaEstado] || '']); })) });
+    return hojas;
+  };
+
   A.exportarMiembrosCSV = function (db, lista) {
     var tipos = {}; db.tiposCuota.forEach(function (t) { tipos[t.id] = t.nombre; });
     var cab = A.COLUMNAS_EXPORT.map(function (c) { return c[1]; }).concat(['Tipo de cuota']);
@@ -1980,6 +2387,122 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   };
 })(A);
 
+/* Alcancía · cortejo por tramos (hermandades y cofradías)
+   Cada salida puede tener su cortejo: tramos ordenados desde la cruz de guía, con la insignia que los abre, su diputado,
+   las parejas que caben y los tipos de tarjeta que se colocan en ellos. El reparto automático sigue la costumbre:
+   de menor a mayor antigüedad desde la cruz de guía hacia el paso, por parejas. Los cambios a mano se respetan. */
+'use strict';
+(function (A) {
+  A.PASOS = { '': '—', cristo: 'Paso de Cristo / misterio', virgen: 'Paso de palio / Virgen' };
+
+  function cortejo(s) { if (!s.cortejo) s.cortejo = { tramos: [], asignaciones: {}, incluirPendientes: false }; return s.cortejo; }
+  A.cortejoDe = cortejo;
+  A.tramoPorId = function (s, id) { return cortejo(s).tramos.find(function (t) { return t.id === id; }); };
+
+  /* Tipos de tarjeta que normalmente van en los tramos (nazarenos de cirio, de cruz…) */
+  A.tiposDeTramo = function (s) {
+    return s.tipos.filter(function (t) { return /nazaren|cirio|cruz|penitente|vela/i.test(t.nombre) && !/guia|guía/i.test(t.nombre); }).map(function (t) { return t.id; });
+  };
+
+  A.guardarTramo = function (db, salidaId, d) {
+    var s = A.salidaPorId(db, salidaId); if (!s) throw new Error('Salida no encontrada.');
+    var c = cortejo(s);
+    if (!String(d.nombre || '').trim()) throw new Error('Escribe el nombre del tramo.');
+    var t = d.id ? A.tramoPorId(s, d.id) : null;
+    if (!t) { t = { id: A.uid('tr') }; c.tramos.push(t); }
+    Object.assign(t, { nombre: d.nombre.trim(), paso: d.paso || '', insignia: d.insignia || '', diputadoId: d.diputadoId || '',
+      parejas: Math.max(0, Math.round(+d.parejas || 0)), tipos: Array.isArray(d.tipos) ? d.tipos : A.tiposDeTramo(s) });
+    return t;
+  };
+  A.moverTramo = function (db, salidaId, id, delta) {
+    var c = cortejo(A.salidaPorId(db, salidaId)), i = c.tramos.findIndex(function (t) { return t.id === id; }), j = i + delta;
+    if (i < 0 || j < 0 || j >= c.tramos.length) return;
+    var x = c.tramos[i]; c.tramos[i] = c.tramos[j]; c.tramos[j] = x;
+  };
+  A.borrarTramo = function (db, salidaId, id) {
+    var c = cortejo(A.salidaPorId(db, salidaId));
+    c.tramos = c.tramos.filter(function (t) { return t.id !== id; });
+    Object.keys(c.asignaciones).forEach(function (k) { if (c.asignaciones[k].tramoId === id) delete c.asignaciones[k]; });
+  };
+
+  /* Crea los tramos de golpe: N delante del paso de Cristo y M delante del de la Virgen */
+  A.crearTramos = function (db, salidaId, d) {
+    var s = A.salidaPorId(db, salidaId), c = cortejo(s), tipos = d.tipos || A.tiposDeTramo(s), k = c.tramos.length;
+    var n1 = Math.max(0, Math.round(+d.tramosCristo || 0)), n2 = Math.max(0, Math.round(+d.tramosVirgen || 0));
+    if (!(n1 + n2)) throw new Error('Indica cuántos tramos.');
+    for (var i = 0; i < n1; i++) c.tramos.push({ id: A.uid('tr'), nombre: 'Tramo ' + (++k), paso: 'cristo', insignia: i === 0 && !c.tramos.length ? 'Cruz de guía' : '', diputadoId: '', parejas: +d.parejas || 15, tipos: tipos.slice() });
+    for (var j = 0; j < n2; j++) c.tramos.push({ id: A.uid('tr'), nombre: 'Tramo ' + (++k), paso: 'virgen', insignia: '', diputadoId: '', parejas: +d.parejas || 15, tipos: tipos.slice() });
+    if (c.tramos[0] && !c.tramos[0].insignia) c.tramos[0].insignia = 'Cruz de guía';
+    A.log(db, 'Creados ' + (n1 + n2) + ' tramos en el cortejo de «' + s.nombre + '»');
+    return c.tramos;
+  };
+
+  /* Tarjetas que entran en el cortejo: vigentes, pagadas (o también pendientes si se elige) */
+  A.tarjetasDelCortejo = function (db, s) {
+    var c = cortejo(s);
+    return A.tarjetasDeSalida(db, s.id).filter(function (t) { return t.estado === 'pagada' || (c.incluirPendientes && t.estado === 'pendiente'); });
+  };
+  function antiguedad(db, t) { var m = A.miembroPorId(db, t.miembroId); return m ? [m.fechaAlta || '9999', +m.numero || 0] : ['9999', 0]; }
+  /* De menos a más antiguo: primero quien entró más tarde (va delante, junto a la cruz de guía) */
+  function masNuevoPrimero(db) {
+    return function (a, b) { var x = antiguedad(db, a), y = antiguedad(db, b); return x[0] !== y[0] ? (x[0] < y[0] ? 1 : -1) : y[1] - x[1]; };
+  }
+
+  /* Reparto automático. Se conservan las asignaciones hechas a mano. */
+  A.repartirCortejo = function (db, salidaId) {
+    var s = A.salidaPorId(db, salidaId), c = cortejo(s);
+    if (!c.tramos.length) throw new Error('Crea antes los tramos.');
+    var vigentes = A.tarjetasDelCortejo(db, s), ids = {};
+    vigentes.forEach(function (t) { ids[t.id] = t; });
+    Object.keys(c.asignaciones).forEach(function (k) { if (!ids[k] || !c.asignaciones[k].manual) delete c.asignaciones[k]; });
+    var ocupados = {}; c.tramos.forEach(function (tr) { ocupados[tr.id] = 0; });
+    Object.keys(c.asignaciones).forEach(function (k) { var a = c.asignaciones[k]; if (ocupados[a.tramoId] !== undefined) ocupados[a.tramoId]++; });
+    var pendientes = vigentes.filter(function (t) { return !c.asignaciones[t.id]; }).sort(masNuevoPrimero(db)), sinSitio = 0;
+    pendientes.forEach(function (t) {
+      var tr = c.tramos.find(function (x) { return x.tipos.indexOf(t.tipoId) >= 0 && (!x.parejas || ocupados[x.id] < x.parejas * 2); });
+      if (!tr) { if (c.tramos.some(function (x) { return x.tipos.indexOf(t.tipoId) >= 0; })) sinSitio++; return; }
+      c.asignaciones[t.id] = { tramoId: tr.id, manual: false }; ocupados[tr.id]++;
+    });
+    c.generado = new Date().toISOString();
+    A.log(db, 'Reparto del cortejo de «' + s.nombre + '»');
+    return { asignados: Object.keys(c.asignaciones).length, sinSitio: sinSitio };
+  };
+  A.asignarTramo = function (db, salidaId, tarjetaId, tramoId) {
+    var c = cortejo(A.salidaPorId(db, salidaId));
+    if (!tramoId) delete c.asignaciones[tarjetaId]; else c.asignaciones[tarjetaId] = { tramoId: tramoId, manual: true };
+  };
+  A.vaciarCortejo = function (db, salidaId, tambienManuales) {
+    var c = cortejo(A.salidaPorId(db, salidaId));
+    Object.keys(c.asignaciones).forEach(function (k) { if (tambienManuales || !c.asignaciones[k].manual) delete c.asignaciones[k]; });
+  };
+
+  /* Composición: para cada tramo, sus hermanos ordenados (de menos a más antiguo) con su número de pareja */
+  A.composicionCortejo = function (db, s) {
+    var c = cortejo(s), vig = {}, orden = masNuevoPrimero(db);
+    A.tarjetasDelCortejo(db, s).forEach(function (t) { vig[t.id] = t; });
+    var tramos = c.tramos.map(function (tr, i) {
+      var ts = Object.keys(c.asignaciones).filter(function (k) { return vig[k] && c.asignaciones[k].tramoId === tr.id; }).map(function (k) { return vig[k]; }).sort(orden);
+      return { tramo: tr, n: i + 1, diputado: tr.diputadoId ? A.miembroPorId(db, tr.diputadoId) : null,
+        hermanos: ts.map(function (t, k) { return { t: t, m: A.miembroPorId(db, t.miembroId), pareja: Math.floor(k / 2) + 1, manual: c.asignaciones[t.id].manual }; }),
+        lleno: !!tr.parejas && ts.length >= tr.parejas * 2 };
+    });
+    var asignadas = {}; Object.keys(c.asignaciones).forEach(function (k) { asignadas[k] = 1; });
+    var deTramo = {}; c.tramos.forEach(function (tr) { tr.tipos.forEach(function (id) { deTramo[id] = 1; }); });
+    var resto = Object.keys(vig).filter(function (k) { return !asignadas[k]; }).map(function (k) { return vig[k]; }).sort(orden)
+      .map(function (t) { return { t: t, m: A.miembroPorId(db, t.miembroId) }; });
+    return { tramos: tramos, fuera: resto.filter(function (x) { return deTramo[x.t.tipoId]; }), otras: resto.filter(function (x) { return !deTramo[x.t.tipoId]; }),
+      total: Object.keys(vig).length };
+  };
+
+  /* Escribe el tramo y la pareja en el «puesto» de cada tarjeta (sale al imprimirlas) */
+  A.escribirPuestos = function (db, salidaId) {
+    var s = A.salidaPorId(db, salidaId), comp = A.composicionCortejo(db, s), n = 0;
+    comp.tramos.forEach(function (x) { x.hermanos.forEach(function (h) { h.t.puesto = x.tramo.nombre + ' · pareja ' + h.pareja; n++; }); });
+    A.log(db, 'Puestos del cortejo escritos en ' + n + ' tarjetas de «' + s.nombre + '»');
+    return n;
+  };
+})(A);
+
 /* Alcancía · utilidades de interfaz: iconos, modales, avisos, navegación e impresión */
 'use strict';
 (function (A) {
@@ -2400,6 +2923,15 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       });
     });
     A.cerrarSalida(db, pasada.id, true);
+    // cortejo de la próxima salida: tramos con insignias y diputados, repartido por antigüedad
+    var prox = db.salidas.find(function (x) { return x.estado === 'abierta'; });
+    if (prox) {
+      prox.cortejo = { tramos: [], asignaciones: {}, incluirPendientes: true };
+      A.crearTramos(db, prox.id, { tramosCristo: 3, tramosVirgen: 2, parejas: 2 });
+      var ins = ['Cruz de guía', 'Senatus', 'Bandera de la hermandad', 'Simpecado', 'Libro de reglas'], dip = db.miembros.filter(function (m) { return m.estado === 'alta'; });
+      A.cortejoDe(prox).tramos.forEach(function (tr, i) { tr.insignia = ins[i] || ''; tr.diputadoId = (dip[10 + i * 3] || {}).id || ''; });
+      A.repartirCortejo(db, prox.id);
+    }
     void vara;
   }
 
@@ -2517,7 +3049,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     if (params.avisos) filtro.avisos = true;
     c.innerHTML = '<div class="titulo-pagina"><h1>' + v.Miembros + '</h1>' +
       '<button data-accion="importar">' + A.icono('subir') + ' Importar</button>' +
-      '<button data-accion="exportar">' + A.icono('bajar') + ' Exportar CSV</button>' +
+      '<button data-accion="exportar">' + A.icono('bajar') + ' Exportar a Excel</button>' +
       (v.antiguedad ? '<button data-accion="renumerar">Renumerar por antigüedad</button>' : '') +
       '<button class="principal" data-accion="nuevo">' + A.icono('mas') + ' Nuevo ' + v.miembro + '</button></div>' +
       '<div class="barra"><div class="crece">' + A.campo('texto', 'Buscar', filtro.texto, { tipo: 'search', ph: 'Nombre, número, DNI, email o teléfono' }) + '</div>' +
@@ -2570,7 +3102,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var b = e.target.closest('[data-accion]'); if (!b) return;
       var acc = b.getAttribute('data-accion');
       if (acc === 'nuevo') A.fichaMiembro(null);
-      if (acc === 'exportar') { A.descargar(A.nombreFichero(db.entidad.nombre) + '-' + v.miembros + '-' + A.hoyISO() + '.csv', A.exportarMiembrosCSV(db), 'text/csv'); A.toast('Exportado. Recuerda: el fichero contiene datos personales sin cifrar.'); }
+      if (acc === 'exportar') { A.descargar(A.nombreFichero(db.entidad.nombre) + '-' + v.miembros + '-' + A.hoyISO() + '.xlsx', new Blob([A.crearXLSX([{ nombre: v.Miembros, filas: A.tablaMiembros(db) }])], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); A.toast('Exportado a Excel. Contiene datos personales: guárdalo en lugar seguro.'); }
       if (acc === 'importar') A.dialogoImportar();
       if (acc === 'renumerar') A.confirmar('Renumerar por antigüedad', 'Se asignarán los números de los ' + v.miembros + ' de alta por fecha de alta (y, a igualdad, por fecha de nacimiento). Las bajas pasan al final.', 'Renumerar').then(function (ok) {
         if (ok) { A.renumerarPorAntiguedad(db); A.guardar(); pintarLista(); A.toast('Numeración actualizada.'); }
@@ -2755,35 +3287,94 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
   /* Importación desde CSV */
   A.dialogoImportar = function () {
     var db = A.S.db, v = A.vocab(db);
+    var st = { hojas: null, hoja: 0, cab: 0, mapa: {}, analisis: null, pendiente: null };
+    var opcionesCampo = [['', '— No importar —']].concat(A.CAMPOS_IMPORT.map(function (c) { return [c[0], c[0] === 'extra' ? v.extra : c[1]]; }));
     A.modal({ titulo: 'Importar ' + v.miembros + ' desde una hoja de cálculo', ancho: true, html:
-      '<div class="aviso info">' + A.icono('ayuda', 20) + '<div><p>Desde Excel, LibreOffice o Google Sheets, guarda tu hoja como <strong>CSV</strong>. La primera fila debe tener los títulos de las columnas (nombre, apellidos, DNI, email, teléfono, cuenta…). ' + A.APP.nombre + ' reconoce los nombres habituales.</p></div></div>' +
-      A.campo('fichero', 'Fichero CSV', '', { tipo: 'file', attrs: ' accept=".csv,text/csv"' }) +
-      A.campo('tipoCuotaId', 'Asignar el tipo de cuota', '', { opciones: [['', '— Sin cuota —']].concat(db.tiposCuota.map(function (t) { return [t.id, t.nombre]; })) }) +
-      A.campo('fechaMandato', 'Fecha de firma de los mandatos existentes', '', { tipo: 'date', ayuda: 'Si ya domiciliabais los recibos, indica la fecha desde la que los mandatos están firmados.' }) +
-      '<div id="vista"></div>',
-      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Importar', valor: true, clase: 'principal', antes: async function (raiz) {
-        var inp = A.$('input[type=file]', raiz);
-        if (!inp.files[0]) throw new Error('Elige un fichero CSV.');
-        var filas = A.parseCSV(await inp.files[0].text());
-        if (filas.length < 2) throw new Error('El fichero no tiene datos.');
-        var mapa = A.mapeaCabeceras(filas[0]);
-        if (mapa.nombre === undefined && mapa.nombreCompleto === undefined) throw new Error('No encuentro una columna «Nombre». Revisa la primera fila.');
-        var f = A.leerForm(raiz);
-        var r = A.importarFilas(db, filas.slice(1), mapa, { tipoCuotaId: f.tipoCuotaId, fechaMandatoPorDefecto: f.fechaMandato });
+      '<div class="aviso info">' + A.icono('ayuda', 20) + '<div><p>Sirve un <strong>Excel (.xlsx)</strong>, una hoja de <strong>LibreOffice (.ods)</strong> o un <strong>CSV</strong>, tal como lo tengáis. ' +
+      'Se reconocen solas las columnas habituales (nombre, apellidos, DNI, cuenta, teléfono…) y antes de importar verás qué se da de alta, qué se actualiza y qué filas tienen errores.</p></div></div>' +
+      A.campo('fichero', 'Fichero', '', { tipo: 'file', attrs: ' accept=".xlsx,.ods,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.oasis.opendocument.spreadsheet,text/csv"' }) +
+      '<div class="columnas">' + A.campo('tipoCuotaId', 'Asignar el tipo de cuota', '', { opciones: [['', '— Sin cuota —']].concat(db.tiposCuota.map(function (t) { return [t.id, t.nombre]; })) }) +
+      A.campo('fechaMandato', 'Fecha de firma de los mandatos existentes', '', { tipo: 'date', ayuda: 'Si ya domiciliabais los recibos, la fecha desde la que están firmados.' }) +
+      A.campo('siExiste', 'Si alguien ya está en ' + A.APP.nombre, 'actualizar', { opciones: [['actualizar', 'Completar y corregir sus datos con los del fichero'], ['omitir', 'Dejarlo como está']],
+        ayuda: 'Se busca por DNI o, si no hay, por nombre y apellidos.' }) + '</div>' +
+      '<div id="imp-paso2" class="oculto"><div class="columnas" id="imp-selectores"></div>' +
+      '<h3>Columnas</h3><div class="tabla-envoltorio"><table><thead><tr><th>Columna del fichero</th><th>Ejemplos</th><th>Se guarda como</th></tr></thead><tbody id="imp-columnas"></tbody></table></div>' +
+      A.campo('apellidosPrimero', 'En «nombre y apellidos» van primero los apellidos (GARCÍA LÓPEZ MARÍA)', false, { tipo: 'checkbox', clase: 'oculto' }) +
+      '<h3>Revisión</h3><div id="imp-resumen" aria-live="polite"></div></div>',
+      botones: [{ texto: 'Cancelar', valor: false }, { texto: 'Importar', valor: true, clase: 'principal', antes: async function () {
+        if (st.pendiente) await st.pendiente;
+        if (!st.analisis) throw new Error('Elige primero el fichero.');
+        if (st.mapa.nombre === undefined && st.mapa.nombreCompleto === undefined) throw new Error('Indica qué columna es el nombre.');
+        var n = st.analisis.nuevos + st.analisis.actualizar;
+        if (!n) throw new Error('No hay ninguna fila que se pueda importar.');
+        var r = A.aplicarImport(db, st.analisis, st.mapa);
+        if (db.entidad.perfil === 'hermandad' && st.mapa.numero === undefined && r.creados) A.renumerarPorAntiguedad(db);
         A.guardar();
-        A.toast(r.importados + ' registros importados.' + (r.errores.length ? ' ' + r.errores.length + ' filas con problemas.' : ''));
-        if (r.errores.length) setTimeout(function () { A.modal({ titulo: 'Filas no importadas', html: '<p>' + r.errores.map(A.esc).join('<br>') + '</p>' }); }, 300);
+        A.toast(r.creados + ' altas y ' + r.actualizados + ' actualizaciones.' + (st.analisis.omitidas ? ' ' + st.analisis.omitidas + ' filas no se importaron.' : ''));
       } }],
       alAbrir: function (raiz) {
-        A.$('input[type=file]', raiz).addEventListener('change', async function (e) {
-          if (!e.target.files[0]) return;
-          var filas = A.parseCSV(await e.target.files[0].text());
-          var mapa = A.mapeaCabeceras(filas[0] || []);
-          var reconocidas = Object.keys(mapa).map(function (k) { return filas[0][mapa[k]] + ' → ' + k; });
-          A.$('#vista', raiz).innerHTML = '<p><strong>' + (filas.length - 1) + ' filas.</strong> Columnas reconocidas: ' + (reconocidas.length ? A.esc(reconocidas.join(' · ')) : 'ninguna') + '</p>';
+        var opciones = function () { var f = A.leerForm(raiz); return { tipoCuotaId: f.tipoCuotaId, fechaMandatoPorDefecto: f.fechaMandato, siExiste: f.siExiste, apellidosPrimero: !!f.apellidosPrimero, filaInicial: st.cab + 2 }; };
+        var filasDatos = function () { return st.hojas[st.hoja].filas.slice(st.cab + 1); };
+        var analizar = function () {
+          if (!st.hojas) return;
+          st.analisis = A.prepararImport(db, filasDatos(), st.mapa, opciones());
+          var a = st.analisis, cab = st.hojas[st.hoja].filas[st.cab] || [];
+          A.$('input[name=apellidosPrimero]', raiz).closest('.campo').classList.toggle('oculto', st.mapa.nombreCompleto === undefined);
+          var problemas = a.filas.filter(function (r) { return r.errores.length || r.avisos.length; });
+          A.$('#imp-resumen', raiz).innerHTML = '<div class="rejilla">' + A.kpi(a.nuevos, 'Altas nuevas') + A.kpi(a.actualizar, 'Ya existen: se actualizan') + A.kpi(a.omitidas, 'No se importan') + A.kpi(a.conAvisos, 'Con avisos') + '</div>' +
+            (st.mapa.nombre === undefined && st.mapa.nombreCompleto === undefined ? '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>Indica qué columna es el <strong>nombre</strong>.</p></div></div>' : '') +
+            (problemas.length ? '<div class="tabla-envoltorio"><table><thead><tr><th class="num">Fila</th><th>Persona</th><th>Qué pasa</th></tr></thead><tbody>' +
+              problemas.slice(0, 200).map(function (r) {
+                return '<tr><td class="num">' + (r.fila + st.cab + 2) + '</td><td>' + A.esc(A.nombreOrden(r.m) || '—') + '</td><td>' +
+                  (r.errores.length ? A.etiquetaEstado('No se importa', 'error') + ' ' + A.esc(r.errores.join(' · ')) : (r.accion === 'actualizar' ? A.etiquetaEstado('Se actualiza', 'neutro') + ' ' : '') + A.esc(r.avisos.join(' · '))) + '</td></tr>';
+              }).join('') + '</tbody></table></div>' + (problemas.length > 200 ? '<p class="gris">Y ' + (problemas.length - 200) + ' filas más con avisos.</p>' : '')
+              : '<p>' + A.etiquetaEstado('Todo correcto', 'ok') + ' No hay errores ni avisos.</p>');
+          void cab;
+        };
+        var pintarColumnas = function () {
+          var filas = st.hojas[st.hoja].filas, cab = filas[st.cab] || [];
+          st.mapa = A.mapeaCabeceras(cab);
+          var campoDe = {}; Object.keys(st.mapa).forEach(function (k) { campoDe[st.mapa[k]] = k; });
+          A.$('#imp-columnas', raiz).innerHTML = cab.map(function (h, i) {
+            var ej = filas.slice(st.cab + 1, st.cab + 4).map(function (f) { return f[i]; }).filter(function (x) { return String(x || '').trim(); }).join(' · ');
+            return '<tr><td>' + A.esc(h || '(columna ' + (i + 1) + ')') + '</td><td class="gris">' + A.esc(ej.slice(0, 60)) + '</td><td>' +
+              A.campo('col' + i, 'Campo', campoDe[i] || '', { opciones: opcionesCampo, clase: 'sin-etiqueta', attrs: ' data-col="' + i + '"' }) + '</td></tr>';
+          }).join('');
+          analizar();
+        };
+        var pintarSelectores = function () {
+          var filas = st.hojas[st.hoja].filas;
+          A.$('#imp-selectores', raiz).innerHTML = (st.hojas.length > 1 ? A.campo('hoja', 'Hoja', st.hoja, { opciones: st.hojas.map(function (h, i) { return [i, h.nombre + ' (' + h.filas.length + ' filas)']; }) }) : '') +
+            A.campo('cabecera', 'Fila con los títulos', st.cab, { opciones: filas.slice(0, 12).map(function (f, i) { return [i, 'Fila ' + (i + 1) + ': ' + f.filter(Boolean).slice(0, 4).join(', ').slice(0, 50)]; }) });
+        };
+        A.$('input[type=file]', raiz).addEventListener('change', function (e) {
+          var fi = e.target.files[0]; if (!fi) return;
+          st.analisis = null;
+          st.pendiente = fi.arrayBuffer().then(function (buf) { return A.leerHojaCalculo(new Uint8Array(buf), fi.name); }).then(function (hojas) {
+            hojas = hojas.filter(function (h) { return h.filas.length; });
+            if (!hojas.length) throw new Error('El fichero está vacío.');
+            st.hojas = hojas; st.hoja = 0; st.cab = A.filaCabecera(hojas[0].filas);
+            A.$('#imp-paso2', raiz).classList.remove('oculto');
+            pintarSelectores(); pintarColumnas();
+          }).catch(function (err) { st.hojas = null; A.$('#imp-paso2', raiz).classList.add('oculto'); A.toast(err.message, 'mal'); }).then(function () { st.pendiente = null; });
+        });
+        raiz.addEventListener('change', function (e) {
+          var n = e.target.name;
+          if (n === 'hoja') { st.hoja = +e.target.value; st.cab = A.filaCabecera(st.hojas[st.hoja].filas); pintarSelectores(); pintarColumnas(); }
+          else if (n === 'cabecera') { st.cab = +e.target.value; pintarColumnas(); }
+          else if (e.target.hasAttribute('data-col')) {
+            var col = +e.target.getAttribute('data-col'), campo = e.target.value;
+            Object.keys(st.mapa).forEach(function (k) { if (st.mapa[k] === col) delete st.mapa[k]; });
+            if (campo) {
+              if (st.mapa[campo] !== undefined) { var otro = A.$('select[data-col="' + st.mapa[campo] + '"]', raiz); if (otro) otro.value = ''; }
+              st.mapa[campo] = col;
+            }
+            analizar();
+          } else if (st.hojas && n !== 'fichero') analizar();
         });
       } }).then(function (r) { if (r) A.pintar(); });
   };
+
 })(A);
 
 /* Alcancía · tipos de cuota, cargos y remesas SEPA */
@@ -3193,6 +3784,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
         (A.S.estadoFichero === 'pendiente-permiso' ? '<button class="principal" data-a="reactivar">Reactivar</button>' : '') +
         '<button data-a="elegir">' + (A.S.handle ? 'Cambiar de fichero' : 'Elegir fichero') + '</button>' + (A.S.handle ? '<button data-a="dejar">Desactivar</button>' : '') + '</div>'
         : '<div class="aviso atencion">' + A.icono('aviso', 20) + '<div><p>Tu navegador no permite esta función. Usa Chrome o Edge, o descarga copias con frecuencia.</p></div></div>') + '</section>' +
+      '<section class="tarjeta"><h2>Exportar todo a Excel</h2><p>Un libro de Excel con una hoja por apartado (' + A.vocab(db).miembros + ', cuotas, remesas, tarjetas, actividades, préstamos…), para consultarlo o llevarlo a otro programa. Contiene datos personales sin cifrar: guárdalo con cuidado.</p>' +
+      '<button data-a="excel">' + A.icono('bajar') + ' Descargar el libro de Excel</button></section>' +
       '<section class="tarjeta"><h2>Traspaso de junta o cambio de ordenador</h2><ol><li>Descarga una copia cifrada.</li><li>Entrega el fichero y, <strong>por otra vía</strong>, la contraseña a la nueva persona responsable.</li>' +
       '<li>Ella abre ' + A.APP.nombre + ' en su equipo y elige «Abrir una copia».</li><li>Al terminar, cambiad la contraseña y borrad los datos del equipo anterior.</li></ol></section>' +
       '<section class="tarjeta"><h2>Restaurar una copia</h2><p>Sustituye todos los datos actuales por los de una copia.</p>' + A.campo('fich', 'Fichero de copia (' + A.APP.extension + ')', '', { tipo: 'file', attrs: ' accept=".alcancia,.asociapp,.asocia,application/json"' }) +
@@ -3212,6 +3805,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       var a = b.getAttribute('data-a');
       try {
         if (a === 'copia') { await A.descargarCopia(); A.toast('Copia descargada.'); A.pintar(); }
+        if (a === 'excel') { A.descargar(A.nombreFichero(db.entidad.nombre) + '-' + A.hoyISO() + '.xlsx', new Blob([A.crearXLSX(A.libroCompleto(db))], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); A.log(db, 'Exportación completa a Excel'); A.guardar(); }
         if (a === 'elegir') { await A.elegirFichero(); A.toast('Guardado automático activado.'); A.pintar(); }
         if (a === 'reactivar') { if (await A.reactivarFichero()) A.toast('Guardado automático reactivado.'); A.pintar(); }
         if (a === 'dejar') { await A.dejarFichero(); A.pintar(); }
@@ -3329,6 +3923,8 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       (A.usaEnseres(db) ? bloque(A.nombreEnseres(db) + ' y préstamos', '<p>Da de alta las piezas (o muchas a la vez con «Alta de varias piezas»), préstalas con fecha de devolución y fianza, e imprime el recibo para firmar. El panel avisa de los préstamos fuera de plazo.</p>') : '') +
       (A.usaDonativos(db) ? bloque('Donativos y modelo 182', '<p>Marca como deducibles los tipos de cuota de afiliación y registra los donativos sueltos. En <a href="#/donativos">Donativos</a> imprime los certificados y descarga en enero el fichero del modelo 182 para subirlo en la sede de la Agencia Tributaria (Presentación mediante fichero). La sede revisa el fichero antes de presentarlo: si avisa de algún error, corrígelo y vuelve a descargarlo.</p>') : '') +
       bloque('¿Y si se olvida la contraseña?', '<p>En la pantalla de entrada, pulsa «¿Habéis olvidado la contraseña?» y escribe la <strong>llave de recuperación</strong> impresa: entraréis y elegiréis una contraseña nueva. La llave también abre las copias de seguridad hechas después de crearla. Puedes crear una llave nueva en <a href="#/datos">Datos y copias</a> si la anterior se pierde.</p>') +
+      bloque('Importar desde Excel', '<p>En ' + v.Miembros + ' › Importar elige vuestro Excel, hoja de LibreOffice o CSV. Comprueba el emparejamiento de columnas y la revisión (altas, actualizaciones y filas con errores) antes de pulsar «Importar». Quien ya estaba se completa, no se duplica.</p>') +
+      (v.salidas ? bloque('Cortejo por tramos', '<p>En Salidas › Cortejo crea los tramos y pulsa «Repartir por antigüedad». Ajusta insignias, diputados y parejas de cada tramo, mueve a quien haga falta e imprime las hojas de los diputados.</p>') : '') +
       (v.salidas ? bloque('Salidas y tarjetas de sitio', '<ol><li>En <a href="#/salidas">Salidas</a>, crea la salida (por ejemplo, «Estación de penitencia 2027»). Puedes copiar los tipos de tarjeta del año anterior.</li>' +
         '<li>En «Tipos y precios», ajusta cada tipo (cirio, insignia, vara, costalero…), su precio y, si quieres, el número de plazas.</li><li>Durante el reparto, «Emitir tarjeta»: elige el ' + v.miembro + ', el tipo y si paga en el momento. Se avisa si tiene cuotas pendientes.</li>' +
         '<li>En «Resumen y listados», imprime el listado de cada tipo de tarjetas pagadas y las propias tarjetas (seis por hoja).</li><li>Al terminar, cierra la salida. Queda en el historial de cada ' + v.miembro + '.</li></ol>') : '') +
@@ -3362,7 +3958,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
       '<div style="padding-bottom:12px" class="fila-acciones"><button data-accion="editar-salida">Editar</button><button data-accion="cerrar-salida">' + (cerrada ? 'Reabrir' : 'Cerrar salida') + '</button>' +
       '<button data-accion="borrar-salida" class="peligro">Borrar</button></div></div>' +
       (cerrada ? '<div class="aviso info">' + A.icono('candado', 20) + '<div><p>Esta salida está cerrada: se pueden consultar e imprimir sus tarjetas, pero no emitir nuevas.</p></div></div>' : '') +
-      '<div class="pestanas" role="tablist">' + [['tarjetas', 'Tarjetas de sitio'], ['tipos', 'Tipos y precios'], ['resumen', 'Resumen y listados']].map(function (p) {
+      '<div class="pestanas" role="tablist">' + [['tarjetas', 'Tarjetas de sitio'], ['tipos', 'Tipos y precios'], ['cortejo', 'Cortejo'], ['resumen', 'Resumen y listados']].map(function (p) {
         return '<button role="tab" aria-selected="' + (pest === p[0]) + '" data-pest="' + p[0] + '">' + p[1] + '</button>';
       }).join('') + '</div><div id="contenido-salida"></div>';
     A.$('select[name=salidaSel]', c).addEventListener('change', function (e) { A.ir('salidas?id=' + e.target.value + '&pestana=' + pest); });
@@ -3381,6 +3977,7 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
     var cont = A.$('#contenido-salida', c);
     if (pest === 'tipos') return pintarTipos(cont, db, s);
     if (pest === 'resumen') return pintarResumen(cont, db, s, v);
+    if (pest === 'cortejo') return A.pintarCortejo(cont, db, s, v);
     pintarTarjetas(cont, db, s, v, params);
   };
 
@@ -4271,6 +4868,125 @@ A.MARCA = {"logo": "<svg class=\"marca-logo\" viewBox=\"0 0 405.9 100\" role=\"i
           return [t.numero, m ? m.numero + ' · ' + A.nombreOrden(m) : 'Datos suprimidos', m ? m.telefono : '', t.participaciones, liq ? t.vendidas : '', liq ? t.devueltas : '', liq ? A.euros(t.liquidadoCent) : '', liq ? 'Liquidado' : 'Por liquidar'];
         })) + '<p>Recaudado: ' + A.euros(r.recaudadoCent) + ' · Pendiente de liquidar: ' + r.pendientesLiquidar + ' talonarios (' + A.euros(r.pendienteCent) + ' como máximo)</p>');
     });
+  }
+})(A);
+
+/* Alcancía · pestaña «Cortejo» de cada salida: tramos, reparto por antigüedad y listados para los diputados */
+'use strict';
+(function (A) {
+  function opcionesMiembros(db) {
+    return [['', '— Sin asignar —']].concat(A.ordenarPor(db.miembros.filter(function (m) { return m.estado === 'alta'; }), 'numero').map(function (m) { return [m.id, m.numero + ' · ' + A.nombreOrden(m)]; }));
+  }
+  function nombreHermano(h) { return h.m ? h.m.numero + ' · ' + A.nombreOrden(h.m) : 'Datos suprimidos'; }
+
+  A.pintarCortejo = function (cont, db, s, v) {
+    var c = A.cortejoDe(s);
+    if (!c.tramos.length) {
+      var tipos = A.tiposDeTramo(s);
+      cont.innerHTML = '<section class="tarjeta"><h2>Organizar el cortejo</h2><p>Divide el cortejo en tramos, cada uno con la insignia que lo abre, su diputado y las parejas que caben. ' + A.APP.nombre +
+        ' coloca a los hermanos con tarjeta de cirio o de cruz por <strong>antigüedad</strong>: los más recientes junto a la cruz de guía y los más antiguos cerca del paso. Después puedes mover a quien quieras.</p>' +
+        '<form id="f-tramos" novalidate><div class="columnas">' + A.campo('tramosCristo', 'Tramos delante del paso de Cristo o misterio', 4, { tipo: 'number', attrs: ' min="0" max="40"' }) +
+        A.campo('tramosVirgen', 'Tramos delante del paso de palio (0 si no hay)', 3, { tipo: 'number', attrs: ' min="0" max="40"' }) +
+        A.campo('parejas', 'Parejas por tramo', 15, { tipo: 'number', attrs: ' min="1" max="200"', ayuda: 'Después se puede ajustar en cada tramo.' }) + '</div>' +
+        '<fieldset><legend>Tarjetas que se colocan en los tramos</legend>' + s.tipos.map(function (t) { return A.campo('tipo_' + t.id, t.nombre, tipos.indexOf(t.id) >= 0, { tipo: 'checkbox' }); }).join('') + '</fieldset>' +
+        '<button class="principal" type="submit">Crear los tramos</button></form></section>';
+      A.$('#f-tramos', cont).addEventListener('submit', function (e) {
+        e.preventDefault();
+        var f = A.leerForm(e.target);
+        try {
+          A.crearTramos(db, s.id, { tramosCristo: f.tramosCristo, tramosVirgen: f.tramosVirgen, parejas: f.parejas, tipos: s.tipos.filter(function (t) { return f['tipo_' + t.id]; }).map(function (t) { return t.id; }) });
+          var r = A.repartirCortejo(db, s.id); A.guardar(); A.pintar();
+          A.toast(r.asignados + ' hermanos colocados por antigüedad' + (r.sinSitio ? '. ' + r.sinSitio + ' no caben: añade parejas o tramos.' : '.'));
+        } catch (err) { A.toast(err.message, 'mal'); }
+      });
+      return;
+    }
+    var comp = A.composicionCortejo(db, s), opTramos = [['', '— Sin tramo —']].concat(c.tramos.map(function (t) { return [t.id, t.nombre]; }));
+    var colocados = comp.tramos.reduce(function (n, x) { return n + x.hermanos.length; }, 0);
+    cont.innerHTML = '<div class="barra"><div class="crece"><p class="gris" style="margin:0">' + colocados + ' hermanos en ' + c.tramos.length + ' tramos' + (comp.fuera.length ? ' · <strong>' + comp.fuera.length + ' sin tramo</strong>' : '') +
+      (c.generado ? ' · último reparto ' + A.fechaES(c.generado.slice(0, 10)) : '') + '</p>' +
+      A.campo('incluirPendientes', 'Incluir tarjetas pendientes de pago', !!c.incluirPendientes, { tipo: 'checkbox' }) + '</div>' +
+      '<div class="fila-acciones" style="padding-bottom:12px"><button data-c="repartir" class="principal">Repartir por antigüedad</button><button data-c="nuevo">' + A.icono('mas') + ' Tramo</button>' +
+      '<button data-c="puestos">Escribir el tramo en las tarjetas</button><button data-c="vaciar">Vaciar</button></div></div>' +
+      '<div class="fila-acciones" style="justify-content:flex-start;margin-bottom:14px"><button data-c="imp-cortejo">' + A.icono('imprimir') + ' Cortejo completo</button><button data-c="imp-diputados">' + A.icono('imprimir') + ' Hojas de los diputados</button><button data-c="excel">' + A.icono('bajar') + ' Excel</button></div>' +
+      comp.tramos.map(function (x, i) {
+        var tr = x.tramo, cap = tr.parejas ? tr.parejas * 2 : 0;
+        return '<section class="tarjeta tramo"><div class="titulo-tramo"><div><h2>' + A.esc(tr.nombre) + (tr.insignia ? ' <span class="gris">· ' + A.esc(tr.insignia) + '</span>' : '') + '</h2>' +
+          '<p class="gris">' + (tr.paso ? A.esc(A.PASOS[tr.paso]) + ' · ' : '') + 'Diputado: ' + (x.diputado ? A.esc(A.nombreCompleto(x.diputado)) : 'sin asignar') + ' · ' +
+          x.hermanos.length + (cap ? ' de ' + cap : '') + ' hermanos' + (x.lleno ? ' · ' + A.etiquetaEstado('Completo', 'aviso') : '') + '</p></div>' +
+          '<div class="fila-acciones"><button class="mini" data-subir="' + tr.id + '"' + (i ? '' : ' disabled') + ' aria-label="Subir tramo">↑</button><button class="mini" data-bajar="' + tr.id + '"' + (i < c.tramos.length - 1 ? '' : ' disabled') + ' aria-label="Bajar tramo">↓</button>' +
+          '<button class="mini" data-editar-tramo="' + tr.id + '">Editar</button></div></div>' +
+          (x.hermanos.length ? '<div class="tabla-envoltorio"><table><thead><tr><th class="num">Pareja</th><th>Hermano/a</th><th>Tarjeta</th><th>Mover a</th></tr></thead><tbody>' + x.hermanos.map(function (h) {
+            return '<tr><td class="num">' + h.pareja + '</td><td>' + A.esc(nombreHermano(h)) + (h.manual ? ' <span class="gris" title="Colocado a mano: el reparto automático lo respeta">(a mano)</span>' : '') + '</td><td>' + A.esc(h.t.tipoNombre) + '</td>' +
+              '<td>' + A.campo('mov_' + h.t.id, 'Mover a', tr.id, { opciones: opTramos, clase: 'sin-etiqueta', attrs: ' data-mover="' + h.t.id + '"' }) + '</td></tr>';
+          }).join('') + '</tbody></table></div>' : '<p class="gris">Tramo vacío.</p>') + '</section>';
+      }).join('') +
+      (comp.fuera.length ? '<section class="tarjeta"><h2>Sin tramo (' + comp.fuera.length + ')</h2><p class="gris">No caben en los tramos que admiten su tarjeta. Añade parejas o tramos, o colócalos a mano.</p>' + listaSuelta(comp.fuera) + '</section>' : '') +
+      (comp.otras.length ? '<details class="historial"><summary>Otras tarjetas (' + comp.otras.length + '): insignias, varas, costaleros… se pueden colocar a mano</summary>' + listaSuelta(comp.otras) + '</details>' : '');
+    function listaSuelta(l) {
+      return '<div class="tabla-envoltorio"><table><thead><tr><th>Hermano/a</th><th>Tarjeta</th><th>Colocar en</th></tr></thead><tbody>' + l.map(function (h) {
+        return '<tr><td>' + A.esc(nombreHermano(h)) + '</td><td>' + A.esc(h.t.tipoNombre) + (h.t.puesto ? ' <span class="gris">' + A.esc(h.t.puesto) + '</span>' : '') + '</td><td>' + A.campo('mov_' + h.t.id, 'Colocar en', '', { opciones: opTramos, clase: 'sin-etiqueta', attrs: ' data-mover="' + h.t.id + '"' }) + '</td></tr>';
+      }).join('') + '</tbody></table></div>';
+    }
+    cont.addEventListener('change', function (e) {
+      if (e.target.name === 'incluirPendientes') { c.incluirPendientes = e.target.checked; A.guardar(); return A.pintar(); }
+      var id = e.target.getAttribute('data-mover'); if (!id) return;
+      A.asignarTramo(db, s.id, id, e.target.value); A.guardar(); A.pintar();
+    });
+    cont.addEventListener('click', function (e) {
+      var b;
+      if ((b = e.target.closest('[data-subir]'))) { A.moverTramo(db, s.id, b.getAttribute('data-subir'), -1); A.guardar(); return A.pintar(); }
+      if ((b = e.target.closest('[data-bajar]'))) { A.moverTramo(db, s.id, b.getAttribute('data-bajar'), 1); A.guardar(); return A.pintar(); }
+      if ((b = e.target.closest('[data-editar-tramo]'))) return dialogoTramo(db, s, A.tramoPorId(s, b.getAttribute('data-editar-tramo')));
+      if (!(b = e.target.closest('[data-c]'))) return;
+      var a = b.getAttribute('data-c');
+      if (a === 'repartir') { var r = A.repartirCortejo(db, s.id); A.guardar(); A.pintar(); A.toast(r.asignados + ' hermanos colocados' + (r.sinSitio ? '; ' + r.sinSitio + ' no caben.' : '.')); }
+      if (a === 'nuevo') dialogoTramo(db, s, null);
+      if (a === 'vaciar') A.modal({ titulo: 'Vaciar el cortejo', html: '<p>Se quitan los hermanos de los tramos (los tramos se conservan).</p>', botones: [{ texto: 'Cancelar', valor: false },
+        { texto: 'Solo los automáticos', valor: 'auto' }, { texto: 'Todos, también los colocados a mano', valor: 'todos', clase: 'peligro' }] }).then(function (r) {
+          if (r) { A.vaciarCortejo(db, s.id, r === 'todos'); A.guardar(); A.pintar(); } });
+      if (a === 'puestos') A.confirmar('Escribir el tramo en las tarjetas', 'Cada tarjeta colocada guardará en «Puesto» su tramo y pareja (por ejemplo, «Tramo 3 · pareja 5») y así saldrá al imprimirla.', 'Escribir').then(function (ok) {
+        if (ok) { var n = A.escribirPuestos(db, s.id); A.guardar(); A.toast(n + ' tarjetas actualizadas.'); } });
+      if (a === 'imp-cortejo') imprimir(db, s, false);
+      if (a === 'imp-diputados') imprimir(db, s, true);
+      if (a === 'excel') {
+        var filas = [['Tramo', 'Insignia', 'Diputado', 'Pareja', 'Nº', 'Hermano/a', 'Tarjeta']];
+        comp.tramos.forEach(function (x) { x.hermanos.forEach(function (h) { filas.push([x.tramo.nombre, x.tramo.insignia, x.diputado ? A.nombreCompleto(x.diputado) : '', h.pareja, h.m ? +h.m.numero : '', h.m ? A.nombreOrden(h.m) : '', h.t.tipoNombre]); }); });
+        A.descargar('cortejo-' + A.nombreFichero(s.nombre) + '.xlsx', new Blob([A.crearXLSX([{ nombre: 'Cortejo', filas: filas }])], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+      }
+    });
+  };
+
+  function dialogoTramo(db, s, tr) {
+    var nuevo = !tr, x = tr || { nombre: 'Tramo ' + (A.cortejoDe(s).tramos.length + 1), paso: '', insignia: '', diputadoId: '', parejas: 15, tipos: A.tiposDeTramo(s) };
+    A.modal({ titulo: nuevo ? 'Nuevo tramo' : 'Editar ' + x.nombre, html: '<form id="f-tramo" novalidate><div class="columnas">' +
+      A.campo('nombre', 'Nombre', x.nombre, { requerido: true }) + A.campo('insignia', 'Insignia que lo abre', x.insignia, { ph: 'Cruz de guía, Senatus, Bandera, Libro de reglas…' }) +
+      A.campo('paso', 'Delante de', x.paso, { opciones: Object.keys(A.PASOS).map(function (k) { return [k, A.PASOS[k]]; }) }) +
+      A.campo('parejas', 'Parejas (0 = sin límite)', x.parejas, { tipo: 'number', attrs: ' min="0"' }) + '</div>' +
+      A.campo('diputado', 'Diputado de tramo', x.diputadoId, { opciones: opcionesMiembros(db) }) +
+      '<fieldset><legend>Tarjetas que van en este tramo</legend>' + s.tipos.map(function (t) { return A.campo('tipo_' + t.id, t.nombre, x.tipos.indexOf(t.id) >= 0, { tipo: 'checkbox' }); }).join('') + '</fieldset></form>',
+      botones: (nuevo ? [] : [{ texto: 'Borrar tramo', valor: 'borrar', clase: 'peligro', izq: true }]).concat([{ texto: 'Cancelar', valor: false }, { texto: 'Guardar', valor: true, clase: 'principal', antes: function (r) {
+        var f = A.leerForm(A.$('#f-tramo', r));
+        A.guardarTramo(db, s.id, { id: tr && tr.id, nombre: f.nombre, insignia: f.insignia, paso: f.paso, parejas: f.parejas, diputadoId: f.diputado,
+          tipos: s.tipos.filter(function (t) { return f['tipo_' + t.id]; }).map(function (t) { return t.id; }) });
+        A.guardar();
+      } }]) }).then(function (r) {
+      if (r === 'borrar') return A.confirmar('Borrar tramo', 'Los hermanos de «' + x.nombre + '» quedarán sin tramo.', 'Borrar', true).then(function (ok) { if (ok) { A.borrarTramo(db, s.id, tr.id); A.guardar(); A.pintar(); } });
+      if (r) A.pintar();
+    });
+  }
+
+  function imprimir(db, s, porDiputado) {
+    var comp = A.composicionCortejo(db, s);
+    var html = comp.tramos.map(function (x, i) {
+      var tr = x.tramo;
+      return '<div class="' + (porDiputado ? 'hoja-tramo' : 'bloque-tramo') + '"><h2 style="font-size:13pt;margin:6mm 0 2mm">' + A.esc(tr.nombre) + (tr.insignia ? ' · ' + A.esc(tr.insignia) : '') + '</h2>' +
+        '<p>' + (tr.paso ? A.esc(A.PASOS[tr.paso]) + ' · ' : '') + 'Diputado: ' + (x.diputado ? A.esc(A.nombreCompleto(x.diputado)) + (x.diputado.telefono ? ' · ' + A.esc(x.diputado.telefono) : '') : '________________') + ' · ' + x.hermanos.length + ' hermanos</p>' +
+        A.tablaImpresion(['Pareja', 'Nº', 'Hermano/a', 'Tarjeta'].concat(porDiputado ? ['Teléfono', 'Presente'] : []), x.hermanos.map(function (h) {
+          return [h.pareja, h.m ? h.m.numero : '', h.m ? A.nombreOrden(h.m) : 'Datos suprimidos', h.t.tipoNombre].concat(porDiputado ? [h.m ? h.m.telefono : '', '☐'] : []);
+        })) + '</div>';
+    }).join('');
+    A.imprimir((porDiputado ? 'Hojas de los diputados · ' : 'Cortejo · ') + s.nombre, '<p>' + A.fechaES(s.fecha) + ' · ' + comp.total + ' hermanos con tarjeta</p>' + html);
   }
 })(A);
 
